@@ -82,8 +82,8 @@
 
 (defmacro custom-timing [call-type execute-type command-string & body]
   `(if *current-miniprofiler*
-    (let [t0# (System/nanoTime)
-          stacktrace-info# (get-stacktrace-info)
+    (let [stacktrace-info# (get-stacktrace-info)
+          t0# (System/nanoTime)
           custom-timing# (create-custom-timing ~execute-type ~command-string stacktrace-info#)]
       (try
         (do ~@body)
