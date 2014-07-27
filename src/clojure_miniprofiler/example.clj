@@ -15,7 +15,6 @@
 ;; protocol for the storage
 
 ;; storage here
-
 (defn uuid [] (str  (java.util.UUID/randomUUID)))
 
 (defn distance-of-ns-time [ns0 ns1]
@@ -24,70 +23,74 @@
 (defonce in-memory-store (atom {}))
 
 (def ^:dynamic *current-miniprofiler* nil)
-(def ^:dynamic *current-miniprofiler-path* ["Root"])
 
 (defn current-ms []
   (float (/ (System/nanoTime) 1000000)))
 
-(defn create-miniprofiler [req]
+(defn add-child [parent-timer section-name]
   {"Id" (uuid)
-   "Name" (:uri req)
-   "Started" (current-ms)
-   "MachineName" "localhost"
-   "Root" {"Id" (uuid)
-           "Name" "ring handler"
-           "StartMilliseconds" (current-ms)
-           "Children" []}
-   "ClientTimings" {}})
+   "Name" section-name
+   "StartMilliseconds" (current-ms)
+   "Children" []})
+
+(defmacro trace [section-name & body]
+  `(if *current-miniprofiler*
+     (let [parent-timer# (:current-timer @*current-miniprofiler*)
+           new-timer# (add-child parent-timer# ~section-name)
+           t0# (System/nanoTime)]
+       (swap! *current-miniprofiler* assoc :current-timer new-timer#)
+       (try
+         (do ~@body)
+         (finally
+           (let [t1# (System/nanoTime)
+                 duration# (distance-of-ns-time t0# t1#)]
+             (swap! *current-miniprofiler*
+                    (fn [current-miniprofiler#]
+                      (assoc current-miniprofiler#
+                             :current-timer
+                             (assoc parent-timer#
+                                    "Children"
+                                    (conj (get parent-timer# "Children")
+                                          (assoc (:current-timer current-miniprofiler#)
+                                                 "DurationMilliseconds" duration#))))))))))
+     (do ~@body)))
+
+(defn create-miniprofiler [req]
+  {:current-timer
+   {"Id" (uuid)
+    "Name" "ring handler"
+    "StartMilliseconds" (current-ms)
+    "Children" []}
+   :root
+   {"Id" (uuid)
+    "Name" (str (.toUpperCase (name (:request-method req))) " " (:uri req))
+    "Started" (current-ms)
+    "MachineName" (.getHostName (java.net.InetAddress/getLocalHost))
+    "ClientTimings" {}}})
 
 (defn save-result [result]
   (swap! in-memory-store assoc (get result "Id") result)
   (clojure.pprint/pprint result))
 
+(defn reconstruct-profile [profiler duration]
+  (assoc (:root profiler)
+         "Root"
+         (assoc
+           (:current-timer profiler)
+           "DurationMilliseconds"
+           duration)
+         "DurationMilliseconds" duration))
+
 (defmacro with-recording [req & body]
-  `(binding [*current-miniprofiler* (atom (create-miniprofiler ~req))
-             *current-miniprofiler-path* (atom ["Root"])]
+  `(let [miniprofiler# (create-miniprofiler ~req)]
+     (binding [*current-miniprofiler* (atom miniprofiler#)]
      (let [t0# (System/nanoTime)
            result# (do ~@body)
            t1# (System/nanoTime)
            duration# (distance-of-ns-time t0# t1#)]
        (save-result
-         (assoc-in
-           (assoc @*current-miniprofiler*
-                  "DurationMilliseconds"
-                  duration#)
-           ["Root" "DurationMilliseconds"] duration#))
-       [(get @*current-miniprofiler* "Id") result#])))
-
-(defn add-child [miniprofiler duration section-name current-path start-ms]
-  (loop [node miniprofiler
-         path current-path]
-    (if (= (count path) 1)
-
-      )
-    )
-  )
-
-(defmacro record [section-name & body]
-  `(do
-     (swap! *current-miniprofiler-path* conj ~section-name)
-     (let [this-uuid (uuid)
-           t0# (System/nanoTime)
-           result# (do ~@body)
-           t1# (System/nanoTime)
-           duration# (distance-of-ns-time t0# t1#)]
-       (swap! *current-miniprofiler-path* drop-last)
-       (swap! *current-miniprofiler*
-              (fn [existing#]
-                (add-child existing# duration# ~section-name @*current-miniprofiler-path* t0#)
-                (let [current-children-count# (count (get-in existing# (conj (vec @*current-miniprofiler-path*) "Children")))]
-                  (assoc-in existing# (conj (vec @*current-miniprofiler-path*) "Children" current-children-count#)
-                            {"Id" this-uuid
-                             "Name" ~section-name
-                             "StartMilliseconds" t0#
-                             "DurationMilliseconds" duration#
-                             "Children" []}))))
-       result#)))
+         (reconstruct-profile @*current-miniprofiler* duration#))
+       [(get-in @*current-miniprofiler* [:root "Id"]) result#]))))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
@@ -108,7 +111,12 @@
 
 (defn build-miniprofiler-response [response duration-ms profiler-id]
   (if (re-matches #".*</body>.*" (:body response))
-    (assoc response :body (string/replace (:body response) #"</body>" (build-miniprofiler-script-tag duration-ms profiler-id)))
+    (assoc response
+           :body
+           (string/replace
+             (:body response)
+             #"</body>"
+             (build-miniprofiler-script-tag duration-ms profiler-id)))
     response))
 
 (defn miniprofiler-resource-path [req]
@@ -168,12 +176,12 @@
 
 (defn slow-fn []
   (println "\n\n\n\n\n")
-  (record "Thread/sleep"
-          (Thread/sleep 100)
-          (record "Thread/sleep"
-                  (Thread/sleep 100)))
-  (record "Thread/sleep"
-          (Thread/sleep 100))
+  (trace "Thread/sleep1"
+          (Thread/sleep 10)
+          (trace "Thread/sleep2"
+                  (Thread/sleep 11)))
+  (trace "Thread/sleep3"
+          (Thread/sleep 12))
   "<body>lol</body>")
 
 (defroutes app-routes
