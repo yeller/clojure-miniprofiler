@@ -184,7 +184,9 @@
   (if (= (:request-method req) :post)
     (let [body (slurp (:body req))
           [_ id] (re-matches #".*id=([a-zA-Z\-0-9]*)&.*" body)]
-      id)
+      (if id
+        id
+        (get-in req [:params :id])))
     (string/replace (:query-string req) "id=" "")))
 
 (defn render-share [id options]
