@@ -99,8 +99,7 @@
    :start-ns (System/nanoTime)})
 
 (defn save-result [result]
-  (swap! in-memory-store assoc (get result "Id") result)
-  (clojure.pprint/pprint result))
+  (swap! in-memory-store assoc (get result "Id") result))
 
 (defn reconstruct-profile [profiler duration]
   (assoc (:root profiler)
