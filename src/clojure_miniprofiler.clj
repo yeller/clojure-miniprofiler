@@ -6,10 +6,6 @@
             [cheshire.core :as json]
             [clojure-miniprofiler.store :refer :all]))
 
-;; TODO
-;; optimization - only care about the paths where the profiler isn't active, for now
-;; fix project.clj requirements
-
 ;; storage here
 (deftype InMemoryStore [store]
   Storage
