@@ -8,7 +8,6 @@
             [cheshire.core :as json]))
 
 ;; TODO
-;; display share results (click share in the UI, catch that in middleware)
 ;; customization (store/root path/callback for authorizing)
 ;; - regexes matching should be exact string comparison from the given miniprofiler path
 ;; protocol for the storage
@@ -166,8 +165,7 @@
           "includes.css")))))
 
 (defn miniprofiler-results-request? [req]
-  (and (= (:request-method req) :post)
-       (re-matches #".*results" (:uri req))))
+  (re-matches #".*results" (:uri req)))
 
 (def fake-response
   {"Id" "21312"
@@ -183,13 +181,30 @@
    "ClientTimings" {}})
 
 (defn get-id-from-req [req]
-  (let [body (slurp (:body req))
-        [_ id] (re-matches #".*id=([a-zA-Z\-0-9]*)&.*" body)]
-    id))
+  (if (= (:request-method req) :post)
+    (let [body (slurp (:body req))
+          [_ id] (re-matches #".*id=([a-zA-Z\-0-9]*)&.*" body)]
+      id)
+    (string/replace (:query-string req) "id=" "")))
+
+(defn render-share [id]
+  (let [resource (response/resource-response "share.html")
+        result (get @in-memory-store id)]
+    {:body
+     (reduce
+       (fn [result [k v]]
+         (string/replace result (re-pattern (str "\\{" k "\\}")) (str v)))
+       (slurp (:body resource))
+       {"name" (get result "Name")
+        "duration" (get result "DurationMilliseconds")
+        "json" (json/generate-string result)
+        "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id"))})}))
 
 (defn miniprofiler-results-response [req]
   (let [id (get-id-from-req req)]
-    {:body (json/generate-string (get @in-memory-store id))}))
+    (if (= (:request-method req) :post)
+      {:body (json/generate-string (get @in-memory-store id))}
+      (render-share id))))
 
 (defn wrap-miniprofiler [handler]
   (fn [req]
