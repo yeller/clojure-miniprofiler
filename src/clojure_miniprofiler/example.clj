@@ -3,7 +3,6 @@
         clojure-miniprofiler))
 
 (defn slow-fn []
-  (println "\n\n\n\n\n")
   (trace "Thread/sleep1"
           (Thread/sleep 10)
           (trace "Thread/sleep2"
@@ -17,5 +16,7 @@
 (defroutes app-routes
   (GET "/" [] (slow-fn)))
 
+(defonce in-memory-store-instance (in-memory-store))
+
 (def app
-  (wrap-miniprofiler app-routes {}))
+  (wrap-miniprofiler app-routes {:store in-memory-store-instance}))
