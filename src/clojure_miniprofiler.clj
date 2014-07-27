@@ -67,7 +67,7 @@
    "StartMilliseconds" (ms-since-start)})
 
 (defn get-stacktrace-info []
-  (let [stacktrace-elems (.getStackTrace (Thread/currentThread))]
+  (let [stacktrace-elems (.getStackTrace (Throwable.))]
     (->> stacktrace-elems
       (filter (fn [^StackTraceElement e]
                 (and
