@@ -9,7 +9,6 @@
 
 ;; TODO
 ;; display share results (click share in the UI, catch that in middleware)
-;; StartMilliseconds should be time since start of req
 ;; customization (store/root path/callback for authorizing)
 ;; - regexes matching should be exact string comparison from the given miniprofiler path
 ;; protocol for the storage
