@@ -72,7 +72,8 @@
       (filter (fn [^StackTraceElement e]
                 (and
                   (not (re-matches #".*clojure_miniprofiler.*" (.getFileName e)))
-                  (not (re-matches #".*clojure.lang.*" (.getFileName e))))))
+                  (not (re-matches #".*clojure.lang.*" (.getFileName e)))
+                  (not (re-matches #".*clojure.core.*" (.getFileName e))))))
       (drop 1)
       (take 5)
       (map (fn [^StackTraceElement e]
