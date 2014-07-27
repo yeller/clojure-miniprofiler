@@ -18,4 +18,4 @@
   (GET "/" [] (slow-fn)))
 
 (def app
-  (wrap-miniprofiler app-routes))
+  (wrap-miniprofiler app-routes {}))

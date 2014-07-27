@@ -9,6 +9,8 @@
 ;; customization (store/root path/callback for authorizing)
 ;; - regexes matching should be exact string comparison from the given miniprofiler path
 ;; protocol for the storage
+;; optimization - only care about the paths where the profiler isn't active, for now
+;; fix project.clj requirements
 
 ;; storage here
 (defn uuid [] (str  (java.util.UUID/randomUUID)))
@@ -152,30 +154,18 @@
              (build-miniprofiler-script-tag duration-ms profiler-id)))
     response))
 
-(defn miniprofiler-resource-path [req]
-  (let [uri (:uri req)]
-    (if (re-matches #".*includes.js" uri)
-      "includes.js"
-      (if (re-matches #".*includes.tmpl" uri)
-        "includes.tmpl"
-        (if (re-matches #".*includes.css" uri)
-          "includes.css")))))
+(defn miniprofiler-resource-path [req options]
+  (let [^String uri (:uri req)]
+    (if (.startsWith uri (:base-path options))
+      (if (= (str (:base-path options) "/includes.js") uri)
+        "includes.js"
+        (if (= (str (:base-path options) "/includes.tmpl") uri)
+          "includes.tmpl"
+          (if (= (str (:base-path options) "/includes.css") uri)
+            "includes.css"))))))
 
 (defn miniprofiler-results-request? [req]
   (re-matches #".*results" (:uri req)))
-
-(def fake-response
-  {"Id" "21312"
-   "Name" "what what"
-   "Started" 1000
-   "DurationMilliseconds" 1000
-   "MachineName" "localhost"
-   "Root" {"Id" "12301290321"
-           "Name" "ladskfjadlskf"
-           "StartMilliseconds" 1001
-           "DurationMilliseconds" 1
-           "Children" []}
-   "ClientTimings" {}})
 
 (defn get-id-from-req [req]
   (if (= (:request-method req) :post)
@@ -203,21 +193,26 @@
       {:body (json/generate-string (get @in-memory-store id))}
       (render-share id))))
 
-(defn wrap-miniprofiler [handler]
-  (fn [req]
-    (if-let [miniprofiler-resource-path (miniprofiler-resource-path req)]
-      (->
-        (response/resource-response miniprofiler-resource-path)
-        (file-info-response req)
-        (content-type-response req))
-      (if (miniprofiler-results-request? req)
-        (miniprofiler-results-response req)
-        (let [t0 (System/nanoTime)
-              [profile-id response] (with-recording req (handler req))
-              t1 (System/nanoTime)
-              duration-ms (float (/ (- t1 t0) 1000000))]
-          (if (and
-                (get-in response [:headers "Content-Type"])
-                (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
-            (build-miniprofiler-response response duration-ms profile-id)
-            response))))))
+(def default-options
+  {:base-path "/miniprofiler"})
+
+(defn wrap-miniprofiler
+  [handler opts]
+  (let [options (merge default-options opts)]
+    (fn [req]
+      (if-let [miniprofiler-resource-path (miniprofiler-resource-path req options)]
+        (->
+          (response/resource-response miniprofiler-resource-path)
+          (file-info-response req)
+          (content-type-response req))
+        (if (miniprofiler-results-request? req)
+          (miniprofiler-results-response req)
+          (let [t0 (System/nanoTime)
+                [profile-id response] (with-recording req (handler req))
+                t1 (System/nanoTime)
+                duration-ms (float (/ (- t1 t0) 1000000))]
+            (if (and
+                  (get-in response [:headers "Content-Type"])
+                  (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
+              (build-miniprofiler-response response duration-ms profile-id)
+              response)))))))
