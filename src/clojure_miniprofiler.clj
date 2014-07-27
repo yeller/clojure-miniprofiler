@@ -66,10 +66,21 @@
    "StackTraceSnippet" stacktrace-info
    "StartMilliseconds" (ms-since-start)})
 
+(defn get-stacktrace-info []
+  (let [stacktrace-elems (.getStackTrace (Thread/currentThread))]
+    (->> stacktrace-elems
+      (filter (fn [^StackTraceElement e]
+                (not (re-matches #".*clojure_miniprofiler.*" (.getFileName e)))))
+      (drop 1)
+      (take 5)
+      (map (fn [^StackTraceElement e]
+             (str (.getClassName e) "." (.getMethodName e) " " (.getFileName e) ":" (.getLineNumber e))))
+      (string/join "\n"))))
+
 (defmacro custom-timing [call-type execute-type command-string & body]
   `(if *current-miniprofiler*
     (let [t0# (System/nanoTime)
-          stacktrace-info# (str ~*file*  ":" ~(:line (meta &form)))
+          stacktrace-info# (get-stacktrace-info)
           custom-timing# (create-custom-timing ~execute-type ~command-string stacktrace-info#)]
       (try
         (do ~@body)
@@ -126,12 +137,12 @@
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
 
-(defn build-miniprofiler-script-tag [duration-ms profiler-id]
+(defn build-miniprofiler-script-tag [duration-ms profiler-id options]
   (reduce
     (fn [result [k v]]
       (string/replace result (re-pattern (str "\\{" k "\\}")) (str v)))
     miniprofiler-script-tag
-    {"path" "miniprofiler/"
+    {"path" (str (:base-path options) "/")
      "version" "0.0.1"
      "currentId" profiler-id
      "ids" profiler-id
@@ -144,25 +155,24 @@
      "maxTracesToShow" "100"
      "trivialMilliseconds" 1}))
 
-(defn build-miniprofiler-response [response duration-ms profiler-id]
-  (if (re-matches #".*</body>.*" (:body response))
-    (assoc response
-           :body
-           (string/replace
-             (:body response)
-             #"</body>"
-             (build-miniprofiler-script-tag duration-ms profiler-id)))
-    response))
+(defn build-miniprofiler-response [response duration-ms profiler-id options]
+  (assoc response
+         :body
+         (string/replace
+           (:body response)
+           #"</body>"
+           (build-miniprofiler-script-tag duration-ms profiler-id options))))
 
 (defn miniprofiler-resource-path [req options]
   (let [^String uri (:uri req)]
-    (if (.startsWith uri (:base-path options))
-      (if (= (str (:base-path options) "/includes.js") uri)
-        "includes.js"
-        (if (= (str (:base-path options) "/includes.tmpl") uri)
-          "includes.tmpl"
-          (if (= (str (:base-path options) "/includes.css") uri)
-            "includes.css"))))))
+    (if (.contains uri (:base-path options))
+      (do
+        (if (.endsWith uri (str (:base-path options) "/includes.js"))
+          "includes.js"
+          (if (.endsWith uri (str (:base-path options) "/includes.tmpl"))
+            "includes.tmpl"
+            (if (.endsWith uri (str (:base-path options) "/includes.css"))
+              "includes.css")))))))
 
 (defn miniprofiler-results-request? [req options]
   (= (str (:base-path options) "/results") (:uri req)))
@@ -185,7 +195,7 @@
        {"name" (get result "Name")
         "duration" (get result "DurationMilliseconds")
         "json" (json/generate-string result)
-        "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id"))})}))
+        "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id") options)})}))
 
 (defn miniprofiler-results-response [req options]
   (let [id (get-id-from-req req)]
@@ -215,6 +225,6 @@
                   duration-ms (float (/ (- t1 t0) 1000000))]
               (if (and (get-in response [:headers "Content-Type"])
                        (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
-                (build-miniprofiler-response response duration-ms profile-id)
+                (build-miniprofiler-response response duration-ms profile-id options)
                 response))))
         (handler req)))))
