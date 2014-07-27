@@ -8,8 +8,8 @@
             [cheshire.core :as json]))
 
 ;; TODO
-;; figure out call tracing
-;; replace clojure stuff with deftyped classes for speed
+;; display share results (click share in the UI, catch that in middleware)
+;; StartMilliseconds should be time since start of req
 ;; customization (store/root path/callback for authorizing)
 ;; - regexes matching should be exact string comparison from the given miniprofiler path
 ;; protocol for the storage
@@ -27,10 +27,13 @@
 (defn current-ms []
   (float (/ (System/nanoTime) 1000000)))
 
+(defn ms-since-start []
+  (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
+
 (defn add-child [parent-timer section-name]
   {"Id" (uuid)
    "Name" section-name
-   "StartMilliseconds" (current-ms)
+   "StartMilliseconds" (ms-since-start)
    "Children" []})
 
 (defmacro trace [section-name & body]
@@ -55,18 +58,49 @@
                                                  "DurationMilliseconds" duration#))))))))))
      (do ~@body)))
 
+(defn create-custom-timing [execute-type command-string stacktrace-info]
+  {"Id" (uuid)
+   "ExecuteType" execute-type
+   "CommandString" command-string
+   "StackTraceSnippet" stacktrace-info
+   "StartMilliseconds" (ms-since-start)})
+
+(defmacro custom-timing [call-type execute-type command-string & body]
+  `(if *current-miniprofiler*
+    (let [t0# (System/nanoTime)
+          stacktrace-info# (str ~*file*  ":" ~(:line (meta &form)))
+          custom-timing# (create-custom-timing ~execute-type ~command-string stacktrace-info#)]
+      (try
+        (do ~@body)
+        (finally
+          (let [t1# (System/nanoTime)
+                duration# (distance-of-ns-time t0# t1#)]
+            (swap! *current-miniprofiler*
+                   (fn [current-miniprofiler#]
+                     (assoc current-miniprofiler#
+                            :current-timer
+                            (assoc (:current-timer current-miniprofiler#)
+                                   "CustomTimings"
+                                   (assoc (get (:current-timer current-miniprofiler#) "CustomTimings" {})
+                                          ~call-type
+                                          (conj (get-in current-miniprofiler# [:current-timer "CustomTimings" ~call-type] [])
+                                                (assoc custom-timing#
+                                                       "DurationMilliseconds" duration#)))))))))))
+    (do ~@body)))
+
 (defn create-miniprofiler [req]
   {:current-timer
    {"Id" (uuid)
     "Name" "ring handler"
-    "StartMilliseconds" (current-ms)
+    "StartMilliseconds" 0
     "Children" []}
    :root
    {"Id" (uuid)
     "Name" (str (.toUpperCase (name (:request-method req))) " " (:uri req))
     "Started" (current-ms)
     "MachineName" (.getHostName (java.net.InetAddress/getLocalHost))
-    "ClientTimings" {}}})
+    "ClientTimings" {}}
+   :start-ns (System/nanoTime)})
 
 (defn save-result [result]
   (swap! in-memory-store assoc (get result "Id") result)
@@ -107,7 +141,11 @@
      "showControls" "true"
      "authorized" "true"
      "startHidden" "false"
-     "position" "right"}))
+     "position" "right"
+     "showTrivial" "true"
+     "showChildren" "true"
+     "maxTracesToShow" "100"
+     "trivialMilliseconds" 1}))
 
 (defn build-miniprofiler-response [response duration-ms profiler-id]
   (if (re-matches #".*</body>.*" (:body response))
@@ -179,6 +217,8 @@
   (trace "Thread/sleep1"
           (Thread/sleep 10)
           (trace "Thread/sleep2"
+                 (custom-timing "sql" "query" "SELECT * FROM USERS"
+                                (Thread/sleep 50))
                   (Thread/sleep 11)))
   (trace "Thread/sleep3"
           (Thread/sleep 12))
