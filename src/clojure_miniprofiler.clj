@@ -4,7 +4,6 @@
             [ring.middleware.content-type :refer [content-type-response]]
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
-            clojure.pprint
             [clojure-miniprofiler.types :refer :all]
             [clojure-miniprofiler.store :refer :all]))
 
@@ -139,7 +138,6 @@
            result# (do ~@body)
            t1# (System/nanoTime)
            duration# (distance-of-ns-time t0# t1#)]
-       (clojure.pprint/pprint (reconstruct-profile @*current-miniprofiler* duration#))
        (save (:store ~options)
              (to-miniprofiler-map
                (reconstruct-profile @*current-miniprofiler* duration#)))
