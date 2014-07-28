@@ -55,3 +55,4 @@
       (to-miniprofiler-map t)
       g)))
 
+(defrecord Options [base-path authorized? trivial-ms])

@@ -216,11 +216,12 @@
 
 (def default-options
   {:base-path "/miniprofiler"
-   :authorized? (fn [req] (= (:server-name req) "localhost"))})
+   :authorized? (fn [req] (= (:server-name req) "localhost"))
+   :trivial-ms 1})
 
 (defn wrap-miniprofiler
   [handler opts]
-  (let [options (merge default-options opts)]
+  (let [options (map->Options (merge default-options opts))]
     (fn [req]
       (if ((:authorized? options) req)
         (if-let [miniprofiler-resource-path (miniprofiler-resource-path req options)]
