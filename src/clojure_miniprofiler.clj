@@ -4,15 +4,59 @@
             [ring.middleware.content-type :refer [content-type-response]]
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
+            clojure.pprint
+            [cheshire.generate :as json-generate]
             [clojure-miniprofiler.store :refer :all]))
 
 ;; storage here
 (deftype InMemoryStore [store]
   Storage
   (save [_ profile]
-    (swap! store assoc (get profile "Id") profile))
+    (swap! store assoc (get profile :id) profile))
   (fetch [_ id]
     (get @store id)))
+
+(defrecord Profiler [current-timer root start-ns])
+(defrecord Profile [id name started duration-ms machine-name root client-timings])
+(defrecord Timing  [id name start-ms duration-ms children custom-timings])
+(defrecord CustomTiming [id execute-type command-string stacktrace-snippet start-ms duration-ms])
+
+(json-generate/add-encoder
+  Profile
+  (fn [p g]
+    (json-generate/encode-map
+      {"Id" (:id p)
+       "Name" (:name p)
+       "Started" (:started p)
+       "DurationMilliseconds" (:duration-ms p)
+       "MachineName" (:machine-name p)
+       "Root" (:root p)
+       "ClientTimings" (:client-timings p)}
+      g)))
+
+(json-generate/add-encoder
+  Timing
+  (fn [t g]
+    (json-generate/encode-map
+      {"Id" (:id t)
+       "Name" (:name t)
+       "StartMilliseconds" (:start-ms t)
+       "DurationMilliseconds" (:duration-ms t)
+       "Children" (:children t)
+       "CustomTimings" (:custom-timings t)}
+      g)))
+
+(json-generate/add-encoder
+  CustomTiming
+  (fn [t g]
+    (json-generate/encode-map
+      {"Id" (:id t)
+       "ExecuteType" (:execute-type t)
+       "CommandString" (:command-string t)
+       "StackTraceSnippet" (:stacktrace-snippet t)
+       "StartMilliseconds" (:start-ms t)
+       "DurationMilliseconds" (:duration-ms t)}
+      g)))
 
 (defn in-memory-store []
   (InMemoryStore.
@@ -32,10 +76,7 @@
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
 
 (defn add-child [parent-timer section-name]
-  {"Id" (uuid)
-   "Name" section-name
-   "StartMilliseconds" (ms-since-start)
-   "Children" []})
+  (Timing. (uuid) section-name (ms-since-start) nil [] {}))
 
 (defmacro trace [section-name & body]
   `(if *current-miniprofiler*
@@ -53,18 +94,20 @@
                       (assoc current-miniprofiler#
                              :current-timer
                              (assoc parent-timer#
-                                    "Children"
-                                    (conj (get parent-timer# "Children")
+                                    :children
+                                    (conj (get parent-timer# :children)
                                           (assoc (:current-timer current-miniprofiler#)
-                                                 "DurationMilliseconds" duration#))))))))))
+                                                 :duration-ms duration#))))))))))
      (do ~@body)))
 
 (defn create-custom-timing [execute-type command-string stacktrace-info]
-  {"Id" (uuid)
-   "ExecuteType" execute-type
-   "CommandString" command-string
-   "StackTraceSnippet" stacktrace-info
-   "StartMilliseconds" (ms-since-start)})
+  (CustomTiming.
+    (uuid)
+    execute-type
+    command-string
+    stacktrace-info
+    (ms-since-start)
+    nil))
 
 (defn get-stacktrace-info []
   (let [stacktrace-elems (.getStackTrace (Throwable.))]
@@ -95,36 +138,41 @@
                      (assoc current-miniprofiler#
                             :current-timer
                             (assoc (:current-timer current-miniprofiler#)
-                                   "CustomTimings"
-                                   (assoc (get (:current-timer current-miniprofiler#) "CustomTimings" {})
+                                   :custom-timings
+                                   (assoc (get (:current-timer current-miniprofiler#) :custom-timings {})
                                           ~call-type
-                                          (conj (get-in current-miniprofiler# [:current-timer "CustomTimings" ~call-type] [])
+                                          (conj (get-in current-miniprofiler# [:current-timer :custom-timings ~call-type] [])
                                                 (assoc custom-timing#
-                                                       "DurationMilliseconds" duration#)))))))))))
+                                                       :duration-ms duration#)))))))))))
     (do ~@body)))
 
 (defn create-miniprofiler [req]
-  {:current-timer
-   {"Id" (uuid)
-    "Name" "ring handler"
-    "StartMilliseconds" 0
-    "Children" []}
-   :root
-   {"Id" (uuid)
-    "Name" (str (.toUpperCase (name (:request-method req))) " " (:uri req))
-    "Started" (current-ms)
-    "MachineName" (.getHostName (java.net.InetAddress/getLocalHost))
-    "ClientTimings" {}}
-   :start-ns (System/nanoTime)})
+  (Profiler.
+    (Timing.
+      (uuid)
+      "ring handler"
+      0
+      nil
+      []
+      {})
+    (Profile.
+      (uuid)
+      (str (.toUpperCase (name (:request-method req))) " " (:uri req))
+      (current-ms)
+      0
+      (.getHostName (java.net.InetAddress/getLocalHost))
+      nil
+      [])
+    (System/nanoTime)))
 
 (defn reconstruct-profile [profiler duration]
   (assoc (:root profiler)
-         "Root"
+         :root
          (assoc
            (:current-timer profiler)
-           "DurationMilliseconds"
+           :duration-ms
            duration)
-         "DurationMilliseconds" duration))
+         :duration-ms duration))
 
 (defmacro with-recording [options req & body]
   `(let [miniprofiler# (create-miniprofiler ~req)]
@@ -133,9 +181,10 @@
            result# (do ~@body)
            t1# (System/nanoTime)
            duration# (distance-of-ns-time t0# t1#)]
+       (clojure.pprint/pprint (reconstruct-profile @*current-miniprofiler* duration#))
        (save (:store ~options)
              (reconstruct-profile @*current-miniprofiler* duration#))
-       [(get-in @*current-miniprofiler* [:root "Id"]) result#]))))
+       [(get-in @*current-miniprofiler* [:root :id]) result#]))))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
