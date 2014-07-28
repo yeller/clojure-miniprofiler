@@ -5,58 +5,16 @@
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
             clojure.pprint
-            [cheshire.generate :as json-generate]
+            [clojure-miniprofiler.types :refer :all]
             [clojure-miniprofiler.store :refer :all]))
 
 ;; storage here
 (deftype InMemoryStore [store]
   Storage
   (save [_ profile]
-    (swap! store assoc (get profile :id) profile))
+    (swap! store assoc (get profile "Id") profile))
   (fetch [_ id]
     (get @store id)))
-
-(defrecord Profiler [current-timer root start-ns])
-(defrecord Profile [id name started duration-ms machine-name root client-timings])
-(defrecord Timing  [id name start-ms duration-ms children custom-timings])
-(defrecord CustomTiming [id execute-type command-string stacktrace-snippet start-ms duration-ms])
-
-(json-generate/add-encoder
-  Profile
-  (fn [p g]
-    (json-generate/encode-map
-      {"Id" (:id p)
-       "Name" (:name p)
-       "Started" (:started p)
-       "DurationMilliseconds" (:duration-ms p)
-       "MachineName" (:machine-name p)
-       "Root" (:root p)
-       "ClientTimings" (:client-timings p)}
-      g)))
-
-(json-generate/add-encoder
-  Timing
-  (fn [t g]
-    (json-generate/encode-map
-      {"Id" (:id t)
-       "Name" (:name t)
-       "StartMilliseconds" (:start-ms t)
-       "DurationMilliseconds" (:duration-ms t)
-       "Children" (:children t)
-       "CustomTimings" (:custom-timings t)}
-      g)))
-
-(json-generate/add-encoder
-  CustomTiming
-  (fn [t g]
-    (json-generate/encode-map
-      {"Id" (:id t)
-       "ExecuteType" (:execute-type t)
-       "CommandString" (:command-string t)
-       "StackTraceSnippet" (:stacktrace-snippet t)
-       "StartMilliseconds" (:start-ms t)
-       "DurationMilliseconds" (:duration-ms t)}
-      g)))
 
 (defn in-memory-store []
   (InMemoryStore.
@@ -76,7 +34,7 @@
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
 
 (defn add-child [parent-timer section-name]
-  (Timing. (uuid) section-name (ms-since-start) nil [] {}))
+  (->Timing (uuid) section-name (ms-since-start) nil [] {}))
 
 (defmacro trace [section-name & body]
   `(if *current-miniprofiler*
@@ -101,7 +59,7 @@
      (do ~@body)))
 
 (defn create-custom-timing [execute-type command-string stacktrace-info]
-  (CustomTiming.
+  (->CustomTiming
     (uuid)
     execute-type
     command-string
@@ -147,15 +105,15 @@
     (do ~@body)))
 
 (defn create-miniprofiler [req]
-  (Profiler.
-    (Timing.
+  (->Profiler
+    (->Timing
       (uuid)
       "ring handler"
       0
       nil
       []
       {})
-    (Profile.
+    (->Profile
       (uuid)
       (str (.toUpperCase (name (:request-method req))) " " (:uri req))
       (current-ms)
@@ -183,7 +141,8 @@
            duration# (distance-of-ns-time t0# t1#)]
        (clojure.pprint/pprint (reconstruct-profile @*current-miniprofiler* duration#))
        (save (:store ~options)
-             (reconstruct-profile @*current-miniprofiler* duration#))
+             (to-miniprofiler-map
+               (reconstruct-profile @*current-miniprofiler* duration#)))
        [(get-in @*current-miniprofiler* [:root :id]) result#]))))
 
 (def miniprofiler-script-tag
