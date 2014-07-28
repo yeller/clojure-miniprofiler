@@ -4,19 +4,19 @@
 
 (defn another-slow []
   (custom-timing "sql" "query" "SELECT * FROM POSTS"
-                 (Thread/sleep 50)))
+                 (do nil)))
 
 (defn slow-fn []
   (trace "Thread/sleep1"
-          (Thread/sleep 10)
+          (do nil)
          (another-slow)
           (trace "Thread/sleep2"
                  (custom-timing "sql" "query" "SELECT * FROM USERS"
-                                (Thread/sleep 50))
-                  (Thread/sleep 11)))
+                                (do nil))
+                  (do nil)))
   (trace "Thread/sleep3"
          (another-slow)
-          (Thread/sleep 12))
+          (do nil))
   "<body>lol</body>")
 
 (defroutes app-routes
