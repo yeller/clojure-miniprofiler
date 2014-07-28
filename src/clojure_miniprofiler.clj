@@ -162,7 +162,7 @@
      "showTrivial" "true"
      "showChildren" "true"
      "maxTracesToShow" "100"
-     "trivialMilliseconds" 1}))
+     "trivialMilliseconds" (:trivial-ms options 2)}))
 
 (defn build-miniprofiler-response [response duration-ms profiler-id options]
   (assoc response
@@ -217,7 +217,7 @@
 (def default-options
   {:base-path "/miniprofiler"
    :authorized? (fn [req] (= (:server-name req) "localhost"))
-   :trivial-ms 1})
+   :trivial-ms 2})
 
 (defn wrap-miniprofiler
   [handler opts]
