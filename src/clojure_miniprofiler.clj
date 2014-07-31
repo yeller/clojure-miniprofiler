@@ -224,9 +224,10 @@
 
 (defn wrap-miniprofiler
   [handler opts]
-  (let [options (map->Options (merge default-options opts))]
+  (let [options (map->Options (merge default-options opts))
+        authorized? (:authorized? options)]
     (fn [req]
-      (if ((:authorized? options) req)
+      (if (authorized? req)
         (if-let [miniprofiler-resource-path (miniprofiler-resource-path req options)]
           (->
             (response/resource-response miniprofiler-resource-path)
