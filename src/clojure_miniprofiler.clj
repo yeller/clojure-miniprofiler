@@ -22,12 +22,12 @@
 (defn uuid [] (str  (java.util.UUID/randomUUID)))
 
 (defn distance-of-ns-time [ns0 ns1]
-  (float (/ (- ns1 ns0) 1000000)))
+  (/ (float (- ns1 ns0)) 1000000))
 
 (def ^:dynamic *current-miniprofiler* nil)
 
 (defn current-ms []
-  (float (/ (System/nanoTime) 1000000)))
+  (/ (float (System/nanoTime)) 1000000))
 
 (defn ms-since-start []
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
@@ -66,30 +66,32 @@
     (ms-since-start)
     nil))
 
-(defn get-stacktrace-info []
-  (let [stacktrace-elems (.getStackTrace (Throwable.))]
-    (->> stacktrace-elems
-      (filter (fn [^StackTraceElement e]
-                (and
-                  (not (re-matches #".*clojure_miniprofiler.*" (.getClassName e)))
-                  (not (re-matches #".*clojure.lang.*" (.getClassName e)))
-                  (not (re-matches #".*clojure.core.*" (.getClassName e))))))
-      (drop 1)
-      (take 5)
-      (map (fn [^StackTraceElement e]
-             (str (.getClassName e) "." (.getMethodName e) " " (.getFileName e) ":" (.getLineNumber e))))
-      (string/join "\n"))))
+(defn get-stacktrace-info [duration]
+  (if (< duration 5)
+    ""
+    (let [stacktrace-elems (.getStackTrace (Throwable.))]
+      (->> stacktrace-elems
+        (filter (fn [^StackTraceElement e]
+                  (and
+                    (not (re-matches #".*clojure_miniprofiler.*" (.getClassName e)))
+                    (not (re-matches #".*clojure.lang.*" (.getClassName e)))
+                    (not (re-matches #".*clojure.core.*" (.getClassName e))))))
+        (drop 1)
+        (take 5)
+        (map (fn [^StackTraceElement e]
+               (str (.getClassName e) "." (.getMethodName e) " " (.getFileName e) ":" (.getLineNumber e))))
+        (string/join "\n")))))
 
 (defmacro custom-timing [call-type execute-type command-string & body]
   `(if *current-miniprofiler*
-    (let [stacktrace-info# (get-stacktrace-info)
-          t0# (System/nanoTime)
-          custom-timing# (create-custom-timing ~execute-type ~command-string stacktrace-info#)]
+    (let [custom-timing# (create-custom-timing ~execute-type ~command-string nil)
+          t0# (System/nanoTime)]
       (try
         (do ~@body)
         (finally
           (let [t1# (System/nanoTime)
-                duration# (distance-of-ns-time t0# t1#)]
+                duration# (distance-of-ns-time t0# t1#)
+                stacktrace-info# (get-stacktrace-info duration#)]
             (swap! *current-miniprofiler*
                    (fn [current-miniprofiler#]
                      (assoc current-miniprofiler#
@@ -100,7 +102,8 @@
                                           ~call-type
                                           (conj (get-in current-miniprofiler# [:current-timer :custom-timings ~call-type] [])
                                                 (assoc custom-timing#
-                                                       :duration-ms duration#)))))))))))
+                                                       :duration-ms duration#
+                                                       :stacktrace-info stacktrace-info#)))))))))))
     (do ~@body)))
 
 (defn create-miniprofiler [req]
