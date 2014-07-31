@@ -103,7 +103,7 @@
                                           (conj (get-in current-miniprofiler# [:current-timer :custom-timings ~call-type] [])
                                                 (assoc custom-timing#
                                                        :duration-ms duration#
-                                                       :stacktrace-info stacktrace-info#)))))))))))
+                                                       :stacktrace-snippet stacktrace-info#)))))))))))
     (do ~@body)))
 
 (defn create-miniprofiler [req]
