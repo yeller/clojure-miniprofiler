@@ -222,6 +222,11 @@
    :authorized? (fn [req] (= (:server-name req) "localhost"))
    :trivial-ms 2})
 
+(defn assets-request? [req]
+  (let [^String uri (:uri req)]
+    (or (.endsWith uri ".js")
+        (.endsWith uri ".css"))))
+
 (defn wrap-miniprofiler
   [handler opts]
   (let [options (map->Options (merge default-options opts))
@@ -235,12 +240,14 @@
             (content-type-response req))
           (if (miniprofiler-results-request? req options)
             (miniprofiler-results-response req options)
-            (let [t0 (System/nanoTime)
-                  [profile-id response] (with-recording options req (handler req))
-                  t1 (System/nanoTime)
-                  duration-ms (float (/ (- t1 t0) 1000000))]
-              (if (and (get-in response [:headers "Content-Type"])
-                       (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
-                (build-miniprofiler-response response duration-ms profile-id options)
-                response))))
+            (if (not (assets-request? req))
+              (let [t0 (System/nanoTime)
+                    [profile-id response] (with-recording options req (handler req))
+                    t1 (System/nanoTime)
+                    duration-ms (float (/ (- t1 t0) 1000000))]
+                (if (and (get-in response [:headers "Content-Type"])
+                         (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
+                  (build-miniprofiler-response response duration-ms profile-id options)
+                  response))
+              (handler req))))
         (handler req)))))

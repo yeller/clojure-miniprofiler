@@ -17,7 +17,7 @@
   (trace "Thread/sleep3"
          (another-slow)
           (do nil))
-  "<body>lol</body>")
+  "<head><script src=\"/foo.js\"></script></head><body>lol</body>")
 
 (defroutes app-routes
   (GET "/" [] (slow-fn)))
