@@ -4,6 +4,8 @@
             [ring.middleware.content-type :refer [content-type-response]]
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
+            [ring.middleware.params :as params]
+            [ring.middleware.nested-params :as nested-params]
             [clojure-miniprofiler.types :refer :all]
             [clojure-miniprofiler.store :refer :all]))
 
@@ -191,8 +193,7 @@
 
 (defn get-id-from-req [req]
   (if (= (:request-method req) :post)
-    (let [body (slurp (:body req))
-          [_ id] (re-matches #".*id=([a-zA-Z\-0-9]*)&.*" body)]
+    (let [id (get-in req [:params "id"])]
       (if id
         id
         (get-in req [:params :id])))
@@ -211,11 +212,75 @@
         "json" (json/generate-string result)
         "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id") options)})}))
 
+(defn add-client-results [req stored-results]
+  (let [timings (into {} (map (fn [[k v]] [k (Long/parseLong v)]) (get-in req [:params "clientPerformance" "timing"])))
+        request-start (get timings "requestStart")
+        timingsDiffSinceStart (into {} (map (fn [[k v]] [k (- v request-start)]) timings))]
+   (assoc
+     stored-results
+     "ClientTimings"
+     {"RedirectCount"
+      (get-in req [:params "clientPerformance" "navigation" "redirectCount"])
+      "Timings"
+      (sort-by
+        (fn [a] (get a "Start"))
+        (filter map?
+                [{"Name" "Connect"
+                  "Start" (get timingsDiffSinceStart "connectStart")
+                  "Duration" (- (get timingsDiffSinceStart "connectEnd") (get timingsDiffSinceStart "connectStart"))}
+
+                 {"Name" "Domain Lookup"
+                  "Start" (get timingsDiffSinceStart "domainLookupStart")
+                  "Duration" (- (get timingsDiffSinceStart "domainLookupEnd") (get timingsDiffSinceStart "domainLookupStart"))}
+
+                 {"Name" "Dom Content Loaded"
+                  "Start" (get timingsDiffSinceStart "domContentLoadedEventStart")
+                  "Duration" (- (get timingsDiffSinceStart "domContentLoadedEventEnd") (get timingsDiffSinceStart "domContentLoadedEventStart"))}
+
+                 {"Name" "Loading"
+                  "Start" (get timingsDiffSinceStart "loadEventStart")
+                  "Duration" (- (get timingsDiffSinceStart "loadEventEnd") (get timingsDiffSinceStart "loadEventStart"))}
+
+                 {"Name" "Unloading"
+                  "Start" (get timingsDiffSinceStart "unloadEventStart")
+                  "Duration" (- (get timingsDiffSinceStart "unloadEventEnd") (get timingsDiffSinceStart "unloadEventStart"))}
+
+                 {"Name" "Response"
+                  "Start" (get timingsDiffSinceStart "responseStart")
+                  "Duration" (- (get timingsDiffSinceStart "responseEnd") (get timingsDiffSinceStart "responseStart"))}
+
+                 {"Name" "Start Fetch"
+                  "Start" (get timingsDiffSinceStart "fetchStart")
+                  "Duration" 0}
+
+                 (if (not (= 0 (get timings "secureConnectionStart")))
+                   {"Name" "secureConnectionStart"
+                    "Start" (get timingsDiffSinceStart "secureConnectionStart")
+                    "Duration" 0})
+
+                 {"Name" "Dom Interactive"
+                  "Start" (get timingsDiffSinceStart "domInteractive")
+                  "Duration" 0}
+
+                 {"Name" "Navigation Start"
+                  "Start" (get timingsDiffSinceStart "navigationStart")
+                  "Duration" 0}
+
+                 {"Name" "First Paint Time"
+                  "Start" (get timingsDiffSinceStart "First Paint Time")
+                  "Duration" 0}
+
+                 {"Name" "First Paint After Load Time"
+                  "Start" (get timingsDiffSinceStart "First Paint After Load Time")
+                  "Duration" 0}]))})))
+
 (defn miniprofiler-results-response [req options]
-  (let [id (get-id-from-req req)]
-    (if (= (:request-method req) :post)
-      {:body (json/generate-string (fetch (:store options) id))}
-      (render-share id options))))
+  (let [with-params (params/params-request req)]
+    (let [id (get-id-from-req with-params)]
+      (if (= (:request-method with-params) :post)
+        (let [nested (nested-params/nested-params-request with-params)]
+          {:body (json/generate-string (add-client-results nested (fetch (:store options) id)))})
+        (render-share id options)))))
 
 (def default-options
   {:base-path "/miniprofiler"
