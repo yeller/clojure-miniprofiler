@@ -5,6 +5,8 @@
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
             [ring.middleware.params :as params]
+            [ring.middleware.params :as params]
+            [ring.middleware.keyword-params :as keyword-params]
             [ring.middleware.nested-params :as nested-params]
             [clojure-miniprofiler.types :refer :all]
             [clojure-miniprofiler.store :refer :all]))
@@ -213,57 +215,58 @@
         "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id") options)})}))
 
 (defn add-client-results [req stored-results]
-  (let [timings (into {} (map (fn [[k v]] [k (Long/parseLong v)]) (get-in req [:params "clientPerformance" "timing"])))
-        request-start (get timings "requestStart")
+  (let [timings (into {} (map (fn [[k v]] [k (Long/parseLong v)]) (get-in req [:params :clientPerformance :timing])))
+        request-start (get timings :requestStart)
         timingsDiffSinceStart (into {} (map (fn [[k v]] [k (- v request-start)]) timings))]
+    (println timingsDiffSinceStart)
    (assoc
      stored-results
      "ClientTimings"
      {"RedirectCount"
-      (get-in req [:params "clientPerformance" "navigation" "redirectCount"])
+      (get-in req [:params :clientPerformance :navigation :redirectCount])
       "Timings"
       (sort-by
         (fn [a] (get a "Start"))
         (filter map?
                 [{"Name" "Connect"
-                  "Start" (get timingsDiffSinceStart "connectStart")
-                  "Duration" (- (get timingsDiffSinceStart "connectEnd") (get timingsDiffSinceStart "connectStart"))}
+                  "Start" (get timingsDiffSinceStart :connectStart)
+                  "Duration" (- (get timingsDiffSinceStart :connectEnd 0) (get timingsDiffSinceStart :connectStart 0))}
 
                  {"Name" "Domain Lookup"
-                  "Start" (get timingsDiffSinceStart "domainLookupStart")
-                  "Duration" (- (get timingsDiffSinceStart "domainLookupEnd") (get timingsDiffSinceStart "domainLookupStart"))}
+                  "Start" (get timingsDiffSinceStart :domainLookupStart)
+                  "Duration" (- (get timingsDiffSinceStart :domainLookupEnd 0) (get timingsDiffSinceStart :domainLookupStart 0))}
 
                  {"Name" "Dom Content Loaded"
-                  "Start" (get timingsDiffSinceStart "domContentLoadedEventStart")
-                  "Duration" (- (get timingsDiffSinceStart "domContentLoadedEventEnd") (get timingsDiffSinceStart "domContentLoadedEventStart"))}
+                  "Start" (get timingsDiffSinceStart :domContentLoadedEventStart)
+                  "Duration" (- (get timingsDiffSinceStart :domContentLoadedEventEnd 0) (get timingsDiffSinceStart :domContentLoadedEventStart 0))}
 
                  {"Name" "Loading"
-                  "Start" (get timingsDiffSinceStart "loadEventStart")
-                  "Duration" (- (get timingsDiffSinceStart "loadEventEnd") (get timingsDiffSinceStart "loadEventStart"))}
+                  "Start" (get timingsDiffSinceStart :loadEventStart)
+                  "Duration" (- (get timingsDiffSinceStart :loadEventEnd 0) (get timingsDiffSinceStart :loadEventStart 0))}
 
                  {"Name" "Unloading"
-                  "Start" (get timingsDiffSinceStart "unloadEventStart")
-                  "Duration" (- (get timingsDiffSinceStart "unloadEventEnd") (get timingsDiffSinceStart "unloadEventStart"))}
+                  "Start" (get timingsDiffSinceStart :unloadEventStart)
+                  "Duration" (- (get timingsDiffSinceStart :unloadEventEnd 0) (get timingsDiffSinceStart :unloadEventStart 0))}
 
                  {"Name" "Response"
-                  "Start" (get timingsDiffSinceStart "responseStart")
-                  "Duration" (- (get timingsDiffSinceStart "responseEnd") (get timingsDiffSinceStart "responseStart"))}
+                  "Start" (get timingsDiffSinceStart :responseStart)
+                  "Duration" (- (get timingsDiffSinceStart :responseEnd 0) (get timingsDiffSinceStart :responseStart 0))}
 
                  {"Name" "Start Fetch"
-                  "Start" (get timingsDiffSinceStart "fetchStart")
+                  "Start" (get timingsDiffSinceStart :fetchStart)
                   "Duration" 0}
 
-                 (if (not (= 0 (get timings "secureConnectionStart")))
+                 (if (not (= 0 (get timings :secureConnectionStart)))
                    {"Name" "secureConnectionStart"
-                    "Start" (get timingsDiffSinceStart "secureConnectionStart")
+                    "Start" (get timingsDiffSinceStart :secureConnectionStart)
                     "Duration" 0})
 
                  {"Name" "Dom Interactive"
-                  "Start" (get timingsDiffSinceStart "domInteractive")
+                  "Start" (get timingsDiffSinceStart :domInteractive)
                   "Duration" 0}
 
                  {"Name" "Navigation Start"
-                  "Start" (get timingsDiffSinceStart "navigationStart")
+                  "Start" (get timingsDiffSinceStart :navigationStart)
                   "Duration" 0}
 
                  {"Name" "First Paint Time"
@@ -278,7 +281,7 @@
   (let [with-params (params/params-request req)]
     (let [id (get-id-from-req with-params)]
       (if (= (:request-method with-params) :post)
-        (let [nested (nested-params/nested-params-request with-params)]
+        (let [nested (keyword-params/keyword-params-request (nested-params/nested-params-request with-params))]
           {:body (json/generate-string (add-client-results nested (fetch (:store options) id)))})
         (render-share id options)))))
 
