@@ -218,7 +218,6 @@
   (let [timings (into {} (map (fn [[k v]] [k (Long/parseLong v)]) (get-in req [:params :clientPerformance :timing])))
         request-start (get timings :requestStart)
         timingsDiffSinceStart (into {} (map (fn [[k v]] [k (- v request-start)]) timings))]
-    (println timingsDiffSinceStart)
    (assoc
      stored-results
      "ClientTimings"
