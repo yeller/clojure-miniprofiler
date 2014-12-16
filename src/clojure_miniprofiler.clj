@@ -344,7 +344,9 @@
    (after it's been authenticated). By default
    removes profiling of assets."
   [req options]
-  (not (assets-request? req)))
+  (if-let [custom-profile-request? (:profile-request? options)]
+    (custom-profile-request? req)
+    (not (assets-request? req))))
 
 (defn respond-with-asset
   "returns a miniprofiler asset as a ring response"
@@ -371,6 +373,7 @@
 (defn wrap-miniprofiler
   "Ring middleware for using miniprofiler.
    Takes an options map with the following options:
+
    :authorized? (a function, optional):
     the most important option - this specifies which
     requests will be profiled. By default only requests
@@ -383,7 +386,11 @@
 
   :trivial-ms (an integer, measured in milliseconds):
     traces that take below this amount of time are hidden by default
-    in the web ui."
+    in the web ui.
+
+  :profile-request? (a function)
+    a function that dictates whether we should profile the current request.
+    By default asset requests aren't profiled, just html/json ones."
   [handler opts]
   (let [options (map->Options (merge default-options opts))
         authorized? (:authorized? options)]
