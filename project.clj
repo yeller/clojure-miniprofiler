@@ -1,4 +1,4 @@
-(defproject clojure-miniprofiler "0.2.3-SNAPSHOT"
+(defproject clojure-miniprofiler "0.2.4"
   :description "FIXME: write description"
   :resource-paths ["resources"]
   :url "http://example.com/FIXME"
