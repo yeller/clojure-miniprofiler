@@ -19,11 +19,16 @@
   (fetch [_ id]
     (get @store id)))
 
-(defn in-memory-store []
+(defn in-memory-store
+  "creates an in-memory miniprofiler results store"
+  []
   (InMemoryStore.
     (atom {})))
 
-(defn uuid [] (str  (java.util.UUID/randomUUID)))
+(defn uuid
+  "generates an uuid"
+  []
+  (str  (java.util.UUID/randomUUID)))
 
 (defn distance-of-ns-time [ns0 ns1]
   (/ (float (- ns1 ns0)) 1000000))
@@ -39,7 +44,14 @@
 (defn add-child [parent-timer section-name]
   (->Timing (uuid) section-name (ms-since-start) nil [] {}))
 
-(defmacro trace [section-name & body]
+(defmacro trace
+  "trace lets you wrap sections of your code, so they show up in the miniprofiler UI.
+   traces are nested (based on the call structure they wrap). A trace should be a section
+   of your code, e.g. rendering a specific view,
+                      loading the required data out of the database
+
+  this macro just takes a name for the section you're wrapping in it."
+  [section-name & body]
   `(if *current-miniprofiler*
      (let [parent-timer# (:current-timer @*current-miniprofiler*)
            new-timer# (add-child parent-timer# ~section-name)
@@ -98,7 +110,22 @@
                                     :duration-ms duration
                                     :stacktrace-snippet stacktrace-info))))))
 
-(defmacro custom-timing [call-type execute-type command-string & body]
+(defmacro custom-timing
+  "wraps some of your code with a timing, so that it will show up
+   in the miniprofiler results.
+  takes 3 other arguments:
+  call-type:
+    the type of timed call this is. Examples might be \"sql\" or \"redis\"
+
+  execute-type:
+    within the call-type, what kind of request this is.
+    Examples might be \"get\" or \"query\" or \"execute\"
+
+  command-string:
+    a pretty printed string of what this is executing.
+    For SQL, this would be the query, for datomic the query or
+    transaction data, for redis the key you're getting etc."
+  [call-type execute-type command-string & body]
   `(if *current-miniprofiler*
     (let [custom-timing# (create-custom-timing ~execute-type ~command-string nil)
           t0# (System/nanoTime)]
@@ -177,7 +204,10 @@
      "maxTracesToShow" "100"
      "trivialMilliseconds" (:trivial-ms options 2)}))
 
-(defn build-miniprofiler-response [response duration-ms profiler-id options]
+(defn build-miniprofiler-response
+  "inserts the miniprofiler javascript tag into
+   an html response."
+  [response duration-ms profiler-id options]
   (assoc response
          :body
          (string/replace
@@ -207,7 +237,9 @@
         (get-in req [:params :id])))
     (string/replace (:query-string req) "id=" "")))
 
-(defn render-share [id options]
+(defn render-share
+  "returns a ring response for sharing the miniprofiler result"
+  [id options]
   (let [resource (response/resource-response "share.html")
         result (fetch (:store options) id)]
     {:body
@@ -220,7 +252,9 @@
         "json" (json/generate-string result)
         "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id") options)})}))
 
-(defn add-client-results [req stored-results]
+(defn add-client-results
+  "adds incoming client results to a stored set of results"
+  [req stored-results]
   (let [timings (into {} (map (fn [[k v]] [k (Long/parseLong v)]) (get-in req [:params :clientPerformance :timing])))
         request-start (get timings :requestStart)
         timingsDiffSinceStart (into {} (map (fn [[k v]] [k (- v request-start)]) timings))]
@@ -282,7 +316,10 @@
                   "Start" (get timingsDiffSinceStart "First Paint After Load Time")
                   "Duration" 0}]))})))
 
-(defn miniprofiler-results-response [req options]
+(defn miniprofiler-results-response
+  "builds a ring response that returns miniprofiler results
+   as json in the :body."
+  [req options]
   (let [with-params (params/params-request req)]
     (let [id (get-id-from-req with-params)]
       (if (= (:request-method with-params) :post)
@@ -295,31 +332,58 @@
    :authorized? (fn [req] (= (:server-name req) "localhost"))
    :trivial-ms 2})
 
-(defn assets-request? [req]
+(defn assets-request?
+  "denotes if a request is for assets"
+  [req]
   (let [^String uri (:uri req)]
     (or (.endsWith uri ".js")
         (.endsWith uri ".css"))))
 
-(defn profile-request? [req options]
+(defn profile-request?
+  "dictates whether this request should be profiled
+   (after it's been authenticated). By default
+   removes profiling of assets."
+  [req options]
   (not (assets-request? req)))
 
-(defn respond-with-asset [req miniprofiler-resource-path]
+(defn respond-with-asset
+  "returns a miniprofiler asset as a ring response"
+  [req miniprofiler-resource-path]
   (->
     (response/resource-response miniprofiler-resource-path)
     (file-info-response req)
     (content-type-response req)))
 
-(defn run-handler-profiled [req handler options]
+(defn run-handler-profiled
+  "runs a handler in profiled mode, potentially adding the profiler
+   into the content, stores traces etc."
+  [req handler options]
   (let [t0 (System/nanoTime)
         [profile-id response] (with-recording options req (handler req))
         t1 (System/nanoTime)
-        duration-ms (float (/ (- t1 t0) 1000000))]
+        duration-ms (distance-of-ns-time t0 t1)]
+
     (if (and (get-in response [:headers "Content-Type"])
              (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
       (build-miniprofiler-response response duration-ms profile-id options)
       response)))
 
 (defn wrap-miniprofiler
+  "Ring middleware for using miniprofiler.
+   Takes an options map with the following options:
+   :authorized? (a function, optional):
+    the most important option - this specifies which
+    requests will be profiled. By default only requests
+    from localhost will be, but in production you probably
+    want to turn this on for admins/etc.
+
+  :base-path (a string, optional):
+    a string that denotes the paths miniprofiler will interact
+    on. By default set to /miniprofiler.
+
+  :trivial-ms (an integer, measured in milliseconds):
+    traces that take below this amount of time are hidden by default
+    in the web ui."
   [handler opts]
   (let [options (map->Options (merge default-options opts))
         authorized? (:authorized? options)]
