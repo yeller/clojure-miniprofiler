@@ -86,6 +86,18 @@
                (str (.getClassName e) "." (.getMethodName e) " " (.getFileName e) ":" (.getLineNumber e))))
         (string/join "\n")))))
 
+(defn add-custom-timing [current-miniprofiler call-type custom-timing duration stacktrace-info]
+  (assoc current-miniprofiler
+         :current-timer
+         (assoc (:current-timer current-miniprofiler)
+                :custom-timings
+                (assoc (get (:current-timer current-miniprofiler) :custom-timings {})
+                       call-type
+                       (conj (get-in current-miniprofiler [:current-timer :custom-timings call-type] [])
+                             (assoc custom-timing
+                                    :duration-ms duration
+                                    :stacktrace-snippet stacktrace-info))))))
+
 (defmacro custom-timing [call-type execute-type command-string & body]
   `(if *current-miniprofiler*
     (let [custom-timing# (create-custom-timing ~execute-type ~command-string nil)
@@ -97,17 +109,11 @@
                 duration# (distance-of-ns-time t0# t1#)
                 stacktrace-info# (get-stacktrace-info duration#)]
             (swap! *current-miniprofiler*
-                   (fn [current-miniprofiler#]
-                     (assoc current-miniprofiler#
-                            :current-timer
-                            (assoc (:current-timer current-miniprofiler#)
-                                   :custom-timings
-                                   (assoc (get (:current-timer current-miniprofiler#) :custom-timings {})
-                                          ~call-type
-                                          (conj (get-in current-miniprofiler# [:current-timer :custom-timings ~call-type] [])
-                                                (assoc custom-timing#
-                                                       :duration-ms duration#
-                                                       :stacktrace-snippet stacktrace-info#)))))))))))
+                   add-custom-timing
+                   ~call-type
+                   custom-timing#
+                   duration#
+                   stacktrace-info#)))))
     (do ~@body)))
 
 (defn create-miniprofiler [req]
@@ -294,27 +300,37 @@
     (or (.endsWith uri ".js")
         (.endsWith uri ".css"))))
 
+(defn profile-request? [req options]
+  (not (assets-request? req)))
+
+(defn respond-with-asset [req miniprofiler-resource-path]
+  (->
+    (response/resource-response miniprofiler-resource-path)
+    (file-info-response req)
+    (content-type-response req)))
+
+(defn run-handler-profiled [req handler options]
+  (let [t0 (System/nanoTime)
+        [profile-id response] (with-recording options req (handler req))
+        t1 (System/nanoTime)
+        duration-ms (float (/ (- t1 t0) 1000000))]
+    (if (and (get-in response [:headers "Content-Type"])
+             (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
+      (build-miniprofiler-response response duration-ms profile-id options)
+      response)))
+
 (defn wrap-miniprofiler
   [handler opts]
   (let [options (map->Options (merge default-options opts))
         authorized? (:authorized? options)]
     (fn [req]
       (if (authorized? req)
-        (if-let [miniprofiler-resource-path (miniprofiler-resource-path req options)]
-          (->
-            (response/resource-response miniprofiler-resource-path)
-            (file-info-response req)
-            (content-type-response req))
+        (if-let [miniprofiler-asset-path (miniprofiler-resource-path req options)]
+          (respond-with-asset req miniprofiler-asset-path)
+
           (if (miniprofiler-results-request? req options)
             (miniprofiler-results-response req options)
-            (if (not (assets-request? req))
-              (let [t0 (System/nanoTime)
-                    [profile-id response] (with-recording options req (handler req))
-                    t1 (System/nanoTime)
-                    duration-ms (float (/ (- t1 t0) 1000000))]
-                (if (and (get-in response [:headers "Content-Type"])
-                         (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
-                  (build-miniprofiler-response response duration-ms profile-id options)
-                  response))
+            (if (profile-request? req options)
+              (run-handler-profiled req handler options)
               (handler req))))
         (handler req)))))
