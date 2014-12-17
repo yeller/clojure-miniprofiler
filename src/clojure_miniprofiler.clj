@@ -9,7 +9,8 @@
             [ring.middleware.keyword-params :as keyword-params]
             [ring.middleware.nested-params :as nested-params]
             [clojure-miniprofiler.types :refer :all]
-            [clojure-miniprofiler.store :refer :all]))
+            [clojure-miniprofiler.store :refer :all]
+            fipp.edn))
 
 ;; storage here
 (deftype InMemoryStore [store]
@@ -73,11 +74,17 @@
                                                  :duration-ms duration#))))))))))
      (do ~@body)))
 
+(defn html-pprint
+  "pretty prints a string and returns it.
+   Much faster than clojure.pprint, uses fipp"
+  [x]
+  (with-out-str (fipp.edn/pprint x)))
+
 (defn create-custom-timing [execute-type command-string stacktrace-info]
   (->CustomTiming
     (uuid)
     execute-type
-    command-string
+    (if (string? command-string) command-string (html-pprint command-string))
     stacktrace-info
     (ms-since-start)
     nil))
