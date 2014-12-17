@@ -143,7 +143,7 @@
                    stacktrace-info#)))))
     (do ~@body)))
 
-(defn create-miniprofiler [req]
+(defn create-miniprofiler [req initial-opts]
   (->Profiler
     (->Timing
       (uuid)
@@ -157,7 +157,7 @@
       (str (.toUpperCase (name (:request-method req))) " " (:uri req))
       (current-ms)
       0
-      (.getHostName (java.net.InetAddress/getLocalHost))
+      (:hostname initial-opts )
       nil
       [])
     (System/nanoTime)))
@@ -172,7 +172,7 @@
          :duration-ms duration))
 
 (defmacro with-recording [options req & body]
-  `(let [miniprofiler# (create-miniprofiler ~req)]
+  `(let [miniprofiler# (create-miniprofiler ~req (or (:initial-opts ~options) (assert false)))]
      (binding [*current-miniprofiler* (atom miniprofiler#)]
      (let [t0# (System/nanoTime)
            result# (do ~@body)
@@ -327,10 +327,14 @@
           {:body (json/generate-string (add-client-results nested (fetch (:store options) id)))})
         (render-share id options)))))
 
-(def default-options
-  {:base-path "/miniprofiler"
-   :authorized? (fn [req] (= (:server-name req) "localhost"))
-   :trivial-ms 2})
+(defn default-options [opts]
+  (merge
+    {:base-path "/miniprofiler"
+     :authorized? (fn [req] (= (:server-name req) "localhost"))
+     :trivial-ms 2
+     :initial-opts
+     {:hostname (.getHostName (java.net.InetAddress/getLocalHost))}}
+    opts))
 
 (defn assets-request?
   "denotes if a request is for assets"
@@ -392,7 +396,7 @@
     a function that dictates whether we should profile the current request.
     By default asset requests aren't profiled, just html/json ones."
   [handler opts]
-  (let [options (map->Options (merge default-options opts))
+  (let [options (map->Options (default-options opts))
         authorized? (:authorized? options)]
     (fn [req]
       (if (authorized? req)
