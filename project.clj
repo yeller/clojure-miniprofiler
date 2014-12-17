@@ -14,6 +14,6 @@
                                     [ring "1.2.0"]
                                     [compojure "1.1.8"]]
                      :main clojure-miniprofiler.bench
-                     :source-paths ["src" "bench"]
+                     :source-paths ["src" "bench" "dev"]
                      :jvm-opts ^:replace
                      ["-Xms1024m" "-Xmx1024m" "-XX:+UseParNewGC" "-XX:+UseConcMarkSweepGC" "-server" "-XX:+CMSParallelRemarkEnabled" "-XX:+AggressiveOpts" "-XX:+UseFastAccessorMethods" "-Djava.awt.headless=true"]}})
