@@ -8,7 +8,8 @@
                  [cheshire  "5.3.1"]]
   :profiles {:dev {:dependencies [[compojure "1.1.8"]]
                    :plugins [[lein-ring "0.8.11"]]
-                   :ring {:handler clojure-miniprofiler.example/app}}
+                   :ring {:handler clojure-miniprofiler.example/app}
+                   :source-paths ["dev"]}
              :bench {:dependencies [[criterium "0.4.1"]
                                     [ring "1.2.0"]
                                     [compojure "1.1.8"]]
