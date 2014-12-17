@@ -37,7 +37,7 @@
 (def ^:dynamic *current-miniprofiler* nil)
 
 (defn current-ms []
-  (long (/ (float (System/nanoTime)) 1000000)))
+  (System/currentTimeMillis))
 
 (defn ms-since-start []
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
