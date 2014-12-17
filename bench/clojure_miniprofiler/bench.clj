@@ -14,6 +14,14 @@
 (def app (wrap-miniprofiler example/app-routes {:store noop-store}))
 
 (defn -main [& args]
-  (println "app-recording")
-  (bench
-    (app {:request-method :get :uri "/" :server-name "localhost"})))
+  (println "app-no-recording")
+  (println "=========================\n\n")
+  (quick-bench
+    (app {:request-method :get :uri "/" :server-name "some-server"}))
+
+  (println "app-with-recording")
+  (println "=========================\n\n")
+  (let [always-authorized (wrap-miniprofiler example/app-routes
+                                             {:store noop-store
+                                              :authorized? (fn [_] true)})]
+    (quick-bench (always-authorized {:request-method :get :uri "/" :server-name "localhost"}))))
