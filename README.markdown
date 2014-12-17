@@ -7,6 +7,8 @@ to work both in production and in development.
 
 ![](screenshot.png)
 
+It can measure both server and client side timings.
+
 ## Installation
 
 Miniprofiler can be installed [from clojars](https://clojars.org/clojure-miniprofiler)
