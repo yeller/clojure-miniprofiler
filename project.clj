@@ -1,5 +1,5 @@
 (defproject clojure-miniprofiler "0.2.5"
-  :description "FIXME: write description"
+  :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
