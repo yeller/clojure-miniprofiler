@@ -2,7 +2,7 @@
 
 A simple but effective profiler for clojure web applications.
 
-clojure-miniprofiler displays a speed bage for every html page. It's designed
+clojure-miniprofiler displays a speed badge for every html page. It's designed
 to work both in production and in development.
 
 ![](screenshot.png)
