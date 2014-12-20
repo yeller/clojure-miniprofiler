@@ -202,13 +202,13 @@
      "version" "0.0.1"
      "currentId" profiler-id
      "ids" profiler-id
-     "showControls" "true"
+     "showControls" (str (:show-controls options true))
      "authorized" "true"
      "startHidden" "false"
-     "position" "right"
-     "showTrivial" "true"
-     "showChildren" "true"
-     "maxTracesToShow" "100"
+     "position" (str (:position options "right"))
+     "showTrivial" (str (:show-trivial options false))
+     "showChildren" (str (:show-children options true))
+     "maxTracesToShow" (str (:max-traces options 100))
      "trivialMilliseconds" (:trivial-ms options 2)}))
 
 (defn build-miniprofiler-response
@@ -339,6 +339,11 @@
     {:base-path "/miniprofiler"
      :authorized? (fn [req] (= (:server-name req) "localhost"))
      :trivial-ms 2
+     :show-trivial false
+     :position "right"
+     :max-traces 100
+     :show-children true
+     :show-controls true
      :initial-opts
      {:hostname (.getHostName (java.net.InetAddress/getLocalHost))}}
     opts))
