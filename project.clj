@@ -1,4 +1,4 @@
-(defproject clojure-miniprofiler "0.2.7"
+(defproject clojure-miniprofiler "0.2.8"
   :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
   :url "http://example.com/FIXME"
