@@ -42,7 +42,7 @@
 (defn ms-since-start []
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
 
-(defn add-child [parent-timer section-name]
+(defn add-child [section-name]
   (->Timing (uuid) section-name (ms-since-start) nil [] {}))
 
 (defmacro trace
@@ -55,7 +55,7 @@
   [section-name & body]
   `(if *current-miniprofiler*
      (let [parent-timer# (:current-timer @*current-miniprofiler*)
-           new-timer# (add-child parent-timer# ~section-name)
+           new-timer# (add-child ~section-name)
            t0# (System/nanoTime)]
        (swap! *current-miniprofiler* assoc :current-timer new-timer#)
        (try
