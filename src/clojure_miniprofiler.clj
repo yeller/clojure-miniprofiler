@@ -184,11 +184,11 @@
      (let [t0# (System/nanoTime)
            result# (do ~@body)
            t1# (System/nanoTime)
-           duration# (distance-of-ns-time t0# t1#)]
+           duration# (distance-of-ns-time t0# t1#)
+           reconstructed-profile# (reconstruct-profile @*current-miniprofiler* duration#)]
        (save (:store ~options)
-             (to-miniprofiler-map
-               (reconstruct-profile @*current-miniprofiler* duration#)))
-       [(get-in @*current-miniprofiler* [:root :id]) result#]))))
+             (to-miniprofiler-map reconstructed-profile#))
+       [(:id reconstructed-profile#) result#]))))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
