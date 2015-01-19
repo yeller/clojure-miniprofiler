@@ -7,7 +7,9 @@
                  (do nil)))
 
 (defn slow-fn []
+  (Thread/sleep 10)
   (trace "foo"
+         (Thread/sleep 10)
          (trace "foo1" (Thread/sleep 10))
          (trace "foo2" (Thread/sleep 20)))
   (trace "Thread/sleep1"
