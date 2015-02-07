@@ -31,4 +31,4 @@
 (defonce in-memory-store-instance (in-memory-store))
 
 (def app
-  (wrap-miniprofiler app-routes {:store in-memory-store-instance}))
+  (wrap-miniprofiler app-routes {}))

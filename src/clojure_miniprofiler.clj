@@ -344,6 +344,7 @@
      :max-traces 100
      :show-children true
      :show-controls true
+     :store (in-memory-store)
      :initial-opts
      {:hostname (.getHostName (java.net.InetAddress/getLocalHost))}}
     opts))
@@ -389,6 +390,12 @@
 (defn wrap-miniprofiler
   "Ring middleware for using miniprofiler.
    Takes an options map with the following options:
+
+  :store (optional, something that implements clojure-miniprofiler.store/Storage)
+    Implementation of a store for miniprofiler results. By default
+    uses an in-memory store, which means that profiling won't work properly
+    in a multi-machine environment. See the documentation on the Storage
+    protocol for more.
 
    :authorized? (a function, optional):
     the most important option - this specifies which
