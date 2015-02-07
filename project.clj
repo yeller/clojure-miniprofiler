@@ -1,7 +1,7 @@
-(defproject clojure-miniprofiler "0.2.9"
+(defproject clojure-miniprofiler "0.3.0"
   :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
-  :url "http://example.com/FIXME"
+  :url "http://yellerapp.com/opensource/clojure-miniprofiler.html"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
