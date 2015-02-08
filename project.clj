@@ -6,14 +6,14 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [cheshire "5.3.1"]
-                 [ring-core "1.3.2"]
+                 [ring/ring-core "1.3.2"]
                  [fipp "0.5.1"]]
   :profiles {:dev {:dependencies [[compojure "1.1.8"]]
                    :plugins [[lein-ring "0.8.11"]]
                    :ring {:handler clojure-miniprofiler.example/app}
                    :source-paths ["dev"]}
              :bench {:dependencies [[criterium "0.4.1"]
-                                    [ring "1.2.0"]
+                                    [ring "1.3.2"]
                                     [compojure "1.1.8"]]
                      :main clojure-miniprofiler.bench
                      :source-paths ["src" "bench" "dev"]
