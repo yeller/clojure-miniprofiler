@@ -1,4 +1,4 @@
-(defproject clojure-miniprofiler "0.3.0"
+(defproject clojure-miniprofiler "0.3.1"
   :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
   :url "http://yellerapp.com/opensource/clojure-miniprofiler.html"
@@ -6,6 +6,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [cheshire "5.3.1"]
+                 [ring-core "1.3.2"]
                  [fipp "0.5.1"]]
   :profiles {:dev {:dependencies [[compojure "1.1.8"]]
                    :plugins [[lein-ring "0.8.11"]]
