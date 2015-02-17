@@ -5,7 +5,6 @@
             [ring.middleware.file-info :refer [file-info-response]]
             [cheshire.core :as json]
             [ring.middleware.params :as params]
-            [ring.middleware.params :as params]
             [ring.middleware.keyword-params :as keyword-params]
             [ring.middleware.nested-params :as nested-params]
             [clojure-miniprofiler.types :refer :all]
