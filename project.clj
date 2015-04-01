@@ -1,4 +1,4 @@
-(defproject clojure-miniprofiler "0.3.1"
+(defproject clojure-miniprofiler "0.4.0"
   :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
   :url "http://yellerapp.com/opensource/clojure-miniprofiler.html"

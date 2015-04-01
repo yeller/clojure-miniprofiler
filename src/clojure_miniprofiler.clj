@@ -364,7 +364,8 @@
   "denotes if a request is for assets"
   [req]
   (let [^String uri (:uri req)]
-    (or (.endsWith uri ".js")
+    (or (.endsWith uri ".ico")
+        (.endsWith uri ".js")
         (.endsWith uri ".css"))))
 
 (defn profile-request?
