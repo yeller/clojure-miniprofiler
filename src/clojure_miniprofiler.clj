@@ -195,7 +195,7 @@
 (defn build-miniprofiler-script-tag [duration-ms profiler-id options]
   (reduce
     (fn [result [k v]]
-      (string/replace result (str "{" k "}") (str v)))
+      (string/replace result (str "{" k "}") (string/re-quote-replacement (str v))))
     miniprofiler-script-tag
     {"path" (str (:base-path options) "/")
      "version" "0.0.1"
@@ -251,7 +251,7 @@
     {:body
      (reduce
        (fn [result [k v]]
-         (string/replace result (re-pattern (str "\\{" k "\\}")) (str v)))
+         (string/replace result (re-pattern (str "\\{" k "\\}")) (string/re-quote-replacement (str v))))
        (slurp (:body resource))
        {"name" (get result "Name")
         "duration" (get result "DurationMilliseconds")
