@@ -189,13 +189,25 @@
              (to-miniprofiler-map reconstructed-profile#))
        [(:id reconstructed-profile#) result#]))))
 
+(defn build-miniprofiler-response-json
+  "inserts the miniprofiler details into a json
+  response."
+  [response duration-ms profiler-id options]
+  (update-in response [:body]
+             #(-> %
+                  (json/parse-string)
+                  (assoc :miniprofiler {:id profiler-id
+                                        :link (str (:base-path options) "/results?id=" profiler-id)
+                                        :durationMilliseconds duration-ms})
+                  (json/generate-string))))
+
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
 
 (defn build-miniprofiler-script-tag [duration-ms profiler-id options]
   (reduce
     (fn [result [k v]]
-      (string/replace result (str "{" k "}") (str v)))
+      (string/replace result (str "{" k "}") (string/re-quote-replacement (str v))))
     miniprofiler-script-tag
     {"path" (str (:base-path options) "/")
      "version" "0.0.1"
@@ -210,7 +222,7 @@
      "maxTracesToShow" (str (:max-traces options 100))
      "trivialMilliseconds" (:trivial-ms options 2)}))
 
-(defn build-miniprofiler-response
+(defn build-miniprofiler-response-html
   "inserts the miniprofiler javascript tag into
    an html response."
   [response duration-ms profiler-id options]
@@ -251,7 +263,7 @@
     {:body
      (reduce
        (fn [result [k v]]
-         (string/replace result (re-pattern (str "\\{" k "\\}")) (str v)))
+         (string/replace result (re-pattern (str "\\{" k "\\}")) (string/re-quote-replacement (str v))))
        (slurp (:body resource))
        {"name" (get result "Name")
         "duration" (get result "DurationMilliseconds")
@@ -381,9 +393,11 @@
         t1 (System/nanoTime)
         duration-ms (distance-of-ns-time t0 t1)]
 
-    (if (and (get-in response [:headers "Content-Type"])
-             (re-matches #".*text/html.*" (get-in response [:headers "Content-Type"])))
-      (build-miniprofiler-response response duration-ms profile-id options)
+    (if-let [ctype (get-in response [:headers "Content-Type"])]
+      (condp re-matches ctype
+        #".*text/html.*" (build-miniprofiler-response-html response duration-ms profile-id options)
+        #".*application/json.*" (build-miniprofiler-response-json response duration-ms profile-id options)
+        :else response)
       response)))
 
 (defn wrap-miniprofiler
