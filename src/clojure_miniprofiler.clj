@@ -189,12 +189,16 @@
              (to-miniprofiler-map reconstructed-profile#))
        [(:id reconstructed-profile#) result#]))))
 
+(defn parse-json [value]
+  (json/parse-string
+    (if (string? value) value (slurp value))))
+
 (defn build-miniprofiler-response-json
   "inserts the miniprofiler details into a json
   response."
   [response duration-ms profiler-id options]
   (let [body (-> (:body response)
-               (json/parse-string)
+               (parse-json)
                (assoc :miniprofiler
                  {:id profiler-id
                   :link (str (:base-path options) "/results?id=" profiler-id)
