@@ -398,7 +398,7 @@
       (condp re-matches ctype
         #".*text/html.*" (build-miniprofiler-response-html response duration-ms profile-id options)
         #".*application/json.*" (build-miniprofiler-response-json response duration-ms profile-id options)
-        :else response)
+        response)
       response)))
 
 (defn wrap-miniprofiler
