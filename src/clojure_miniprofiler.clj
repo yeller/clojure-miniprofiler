@@ -206,7 +206,9 @@
                (json/generate-string))]
     (-> response
       (assoc :body body)
-      (assoc-in [:headers "Content-Length"] (str (count body))))))
+      (assoc-in [:headers "Content-Length"] (str (count body)))
+      (assoc-in [:headers "X-MiniProfiler-Ids"]
+        (json/generate-string [profiler-id])))))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
