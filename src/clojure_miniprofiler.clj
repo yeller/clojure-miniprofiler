@@ -193,13 +193,16 @@
   "inserts the miniprofiler details into a json
   response."
   [response duration-ms profiler-id options]
-  (update-in response [:body]
-             #(-> %
-                  (json/parse-string)
-                  (assoc :miniprofiler {:id profiler-id
-                                        :link (str (:base-path options) "/results?id=" profiler-id)
-                                        :durationMilliseconds duration-ms})
-                  (json/generate-string))))
+  (let [body (-> (:body response)
+               (json/parse-string)
+               (assoc :miniprofiler
+                 {:id profiler-id
+                  :link (str (:base-path options) "/results?id=" profiler-id)
+                  :durationMilliseconds duration-ms})
+               (json/generate-string))]
+    (-> response
+      (assoc :body body)
+      (assoc-in [:headers "Content-Length"] (str (count body))))))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
