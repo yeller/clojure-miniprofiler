@@ -427,7 +427,13 @@
 
   :profile-request? (a function)
     a function that dictates whether we should profile the current request.
-    By default asset requests aren't profiled, just html/json ones."
+    By default asset requests aren't profiled, just html/json ones.
+
+  :store (a reference, optional)
+    Implementation of a store for the profiler results:
+      (:require [clojure-miniprofiler :refer [wrap-miniprofiler in-memory-store]])
+      (defonce in-memory-store-instance (in-memory-store))
+      (wrap-miniprofiler % {:store in-memory-store-instance})"
   [handler opts]
   (let [options (map->Options (default-options opts))
         authorized? (:authorized? options)]
