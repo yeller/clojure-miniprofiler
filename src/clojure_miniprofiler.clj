@@ -235,12 +235,12 @@
   "inserts the miniprofiler javascript tag into
    an html response."
   [response duration-ms profiler-id options]
-  (assoc response
-         :body
-         (string/replace
-           (:body response)
-           #"</body>"
-           (build-miniprofiler-script-tag duration-ms profiler-id options))))
+  (let [body      (:body response)
+        insert-at (.lastIndexOf body "</body>")
+        new-body  (str (.substring body 0 insert-at)
+                    (build-miniprofiler-script-tag duration-ms profiler-id options)
+                    (.substring body insert-at))]
+    (assoc response :body new-body)))
 
 (defn miniprofiler-resource-path [req options]
   (let [^String uri (:uri req)]
