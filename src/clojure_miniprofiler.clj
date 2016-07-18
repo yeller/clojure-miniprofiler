@@ -1,5 +1,6 @@
 (ns clojure-miniprofiler
   (:require [clojure.string :as string]
+            [clojure.java.io :as io]
             [ring.util.response :as response]
             [ring.middleware.content-type :refer [content-type-response]]
             [ring.middleware.file-info :refer [file-info-response]]
@@ -197,18 +198,23 @@
   "inserts the miniprofiler details into a json
   response."
   [response duration-ms profiler-id options]
-  (let [body (-> (:body response)
-               (parse-json)
-               (assoc :miniprofiler
-                 {:id profiler-id
-                  :link (str (:base-path options) "/results?id=" profiler-id)
-                  :durationMilliseconds duration-ms})
-               (json/generate-string))]
-    (-> response
-      (assoc :body body)
-      (assoc-in [:headers "Content-Length"] (str (count body)))
-      (assoc-in [:headers "X-MiniProfiler-Ids"]
-        (json/generate-string [profiler-id])))))
+  (if (or (get-in response [:headers "Content-Length"])
+          (string? (:body response)))
+    (let [body (-> (:body response)
+                 (parse-json)
+                 (assoc :miniprofiler
+                   {:id profiler-id
+                    :link (str (:base-path options) "/results?id=" profiler-id)
+                    :durationMilliseconds duration-ms})
+                 (json/generate-string))
+          body*  (.getBytes body "UTF-8")
+          length (count body*)]
+      (-> response
+        (assoc :body (io/input-stream body*))
+        (assoc-in [:headers "Content-Length"] (str length))
+        (assoc-in [:headers "X-MiniProfiler-Ids"]
+          (json/generate-string [profiler-id]))))
+    response))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
