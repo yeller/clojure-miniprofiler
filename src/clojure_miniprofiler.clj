@@ -1,5 +1,6 @@
 (ns clojure-miniprofiler
   (:require [clojure.string :as string]
+            [clojure.java.io :as io]
             [ring.util.response :as response]
             [ring.middleware.content-type :refer [content-type-response]]
             [ring.middleware.file-info :refer [file-info-response]]
@@ -189,17 +190,31 @@
              (to-miniprofiler-map reconstructed-profile#))
        [(:id reconstructed-profile#) result#]))))
 
+(defn parse-json [value]
+  (json/parse-string
+    (if (string? value) value (slurp value))))
+
 (defn build-miniprofiler-response-json
   "inserts the miniprofiler details into a json
   response."
   [response duration-ms profiler-id options]
-  (update-in response [:body]
-             #(-> %
-                  (json/parse-string)
-                  (assoc :miniprofiler {:id profiler-id
-                                        :link (str (:base-path options) "/results?id=" profiler-id)
-                                        :durationMilliseconds duration-ms})
-                  (json/generate-string))))
+  (if (or (get-in response [:headers "Content-Length"])
+          (string? (:body response)))
+    (let [body (-> (:body response)
+                 (parse-json)
+                 (assoc :miniprofiler
+                   {:id profiler-id
+                    :link (str (:base-path options) "/results?id=" profiler-id)
+                    :durationMilliseconds duration-ms})
+                 (json/generate-string))
+          body*  (.getBytes body "UTF-8")
+          length (count body*)]
+      (-> response
+        (assoc :body (io/input-stream body*))
+        (assoc-in [:headers "Content-Length"] (str length))
+        (assoc-in [:headers "X-MiniProfiler-Ids"]
+          (json/generate-string [profiler-id]))))
+    response))
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
@@ -226,12 +241,12 @@
   "inserts the miniprofiler javascript tag into
    an html response."
   [response duration-ms profiler-id options]
-  (assoc response
-         :body
-         (string/replace
-           (:body response)
-           #"</body>"
-           (build-miniprofiler-script-tag duration-ms profiler-id options))))
+  (let [body      (:body response)
+        insert-at (.lastIndexOf body "</body>")
+        new-body  (str (.substring body 0 insert-at)
+                    (build-miniprofiler-script-tag duration-ms profiler-id options)
+                    (.substring body insert-at))]
+    (assoc response :body new-body)))
 
 (defn miniprofiler-resource-path [req options]
   (let [^String uri (:uri req)]
@@ -398,7 +413,7 @@
       (condp re-matches ctype
         #".*text/html.*" (build-miniprofiler-response-html response duration-ms profile-id options)
         #".*application/json.*" (build-miniprofiler-response-json response duration-ms profile-id options)
-        :else response)
+        response)
       response)))
 
 (defn wrap-miniprofiler
