@@ -50,25 +50,19 @@
 (json-generate/add-encoder
   Profile
   (fn [p g]
-    (json-generate/encode-map
-      (to-miniprofiler-map p)
-      g)))
+    (json-generate/encode-map (to-miniprofiler-map p) g)))
 
 
 (json-generate/add-encoder
   Timing
   (fn [t g]
-    (json-generate/encode-map
-      (to-miniprofiler-map t)
-      g)))
+    (json-generate/encode-map (to-miniprofiler-map t) g)))
 
 
 (json-generate/add-encoder
   CustomTiming
   (fn [t g]
-    (json-generate/encode-map
-      (to-miniprofiler-map t)
-      g)))
+    (json-generate/encode-map (to-miniprofiler-map t) g)))
 
 
 (defrecord Options [base-path authorized? trivial-ms initial-opts])

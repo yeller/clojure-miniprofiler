@@ -266,17 +266,23 @@
   "inserts the miniprofiler javascript tag into
    an html response."
   [response duration-ms profiler-id options]
-  (let [body      (:body response)
-        insert-at (.lastIndexOf body "</body>")
-        new-body  (str (.substring body 0 insert-at)
-                    (build-miniprofiler-script-tag duration-ms profiler-id options)
-                    (.substring body insert-at))]
-    (assoc response :body new-body)))
+  (let [body       (:body response)
+        insert-at  (.lastIndexOf body "</body>")
+        script-tag (build-miniprofiler-script-tag duration-ms profiler-id options)
+        new-body   (if (pos? insert-at)
+                     (str (.substring body 0 insert-at)
+                       script-tag
+                       (.substring body insert-at))
+                     body)]
+    (-> response
+        (assoc :body new-body)
+        (update :headers assoc
+          "X-MiniProfiler-Ids" (json/generate-string [profiler-id])))))
 
 
 (defn miniprofiler-resource-path [req options]
   (let [^String uri (:uri req)]
-    (when (.contains uri (:base-path options))
+    (when (.startsWith uri (:base-path options))
       (cond
         (.endsWith uri (str (:base-path options) "/includes.js"))   "includes.js"
         (.endsWith uri (str (:base-path options) "/includes.tmpl")) "includes.tmpl"
@@ -284,15 +290,15 @@
 
 
 (defn miniprofiler-results-request? [req options]
-  (= (str (:base-path options) "/results") (:uri req)))
+  (= (str (:base-path options) "/results")
+     (:uri req)))
 
 
-(defn get-id-from-req [req]
+(defn req->id [req]
   (if (= (:request-method req) :post)
-    (let [id (get-in req [:params "id"])]
-      (if id
-        id
-        (get-in req [:params :id])))
+    (let [params (:params req)]
+      (or (get params "id")
+          (:id params)))
     (string/replace (:query-string req) "id=" "")))
 
 
@@ -381,13 +387,14 @@
   as json in the :body."
   [req options]
   (let [with-params (params/params-request req)
-        id          (get-id-from-req with-params)]
+        id          (req->id with-params)]
     (if (= (:request-method with-params) :post)
       (let [nested (-> with-params
                        nested-params/nested-params-request
                        keyword-params/keyword-params-request)
             result (add-client-results nested (store/fetch (:store options) id))]
-        {:body (json/generate-string result)})
+        {:headers {"content-type" "application/json"}
+         :body    (json/generate-string result)})
       (render-share id options))))
 
 
@@ -478,13 +485,18 @@
   (let [options     (types/map->Options (default-options opts))
         authorized? (:authorized? options)]
     (fn [req]
-      (if (authorized? req)
-        (if-let [miniprofiler-asset-path (miniprofiler-resource-path req options)]
-          (respond-with-asset req miniprofiler-asset-path)
+      (cond
+        (not (authorized? req))
+        (handler req)
 
-          (if (miniprofiler-results-request? req options)
-            (miniprofiler-results-response req options)
-            (if (profile-request? req options)
-              (run-handler-profiled req handler options)
-              (handler req))))
+        (miniprofiler-resource-path req options)
+        (respond-with-asset req (miniprofiler-resource-path req options))
+
+        (miniprofiler-results-request? req options)
+        (miniprofiler-results-response req options)
+
+        (profile-request? req options)
+        (run-handler-profiled req handler options)
+
+        :else
         (handler req)))))

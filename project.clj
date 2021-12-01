@@ -1,4 +1,4 @@
-(defproject ua.kasta/clojure-miniprofiler "0.5.0-7"
+(defproject ua.kasta/clojure-miniprofiler "0.5.0-8"
   :description "a simple but effective profiler for clojure web applications"
   :resource-paths ["resources"]
   :url "https://github.com/piranha/clojure-miniprofiler"
