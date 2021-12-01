@@ -1,4 +1,4 @@
-(ns clojure-miniprofiler
+(ns clojure-miniprofiler.core
   (:require [clojure.string :as string]
             [clojure.java.io :as io]
             [ring.util.response :as response]
@@ -8,60 +8,74 @@
             [ring.middleware.params :as params]
             [ring.middleware.keyword-params :as keyword-params]
             [ring.middleware.nested-params :as nested-params]
-            [clojure-miniprofiler.types :refer :all]
-            [clojure-miniprofiler.store :refer :all]
-            fipp.edn))
+            fipp.edn
+
+            [clojure-miniprofiler.types :as types]
+            [clojure-miniprofiler.store :as store]))
+
+
+(def ^:dynamic *current-miniprofiler* nil)
 
 ;; storage here
 (deftype InMemoryStore [store]
-  Storage
+  store/Storage
   (save [_ profile]
     (swap! store assoc (get profile "Id") profile))
   (fetch [_ id]
     (get @store id)))
 
+
 (defn in-memory-store
   "creates an in-memory miniprofiler results store"
   []
-  (InMemoryStore.
-    (atom {})))
+  (InMemoryStore. (atom {})))
+
 
 (defn uuid
   "generates an uuid"
   []
   (str  (java.util.UUID/randomUUID)))
 
+
 (defn distance-of-ns-time [ns0 ns1]
   (/ (float (- ns1 ns0)) 1000000))
 
-(def ^:dynamic *current-miniprofiler* nil)
 
 (defn current-ms []
   (System/currentTimeMillis))
 
+
 (defn ms-since-start []
   (distance-of-ns-time (get @*current-miniprofiler* :start-ns) (System/nanoTime)))
 
+
 (defn add-child [section-name]
-  (->Timing (uuid) section-name (ms-since-start) nil [] {}))
+  (types/map->Timing
+    {:id             (uuid)
+     :timing-name    section-name
+     :start-ms       (ms-since-start)
+     :duration-ms    nil
+     :children       []
+     :custom-timings {}}))
+
 
 (defmacro trace
   "trace lets you wrap sections of your code, so they show up in the miniprofiler UI.
-   traces are nested (based on the call structure they wrap). A trace should be a section
-   of your code, e.g. rendering a specific view,
-                      loading the required data out of the database
+  traces are nested (based on the call structure they wrap). A trace should be a
+  section of your code, e.g. rendering a specific view, loading the required
+  data out of the database, etc.
 
-  this macro just takes a name for the section you're wrapping in it."
+  This macro just takes a name for the section you're wrapping in it."
   [section-name & body]
   `(if *current-miniprofiler*
      (let [parent-timer# (:current-timer @*current-miniprofiler*)
-           new-timer# (add-child ~section-name)
-           t0# (System/nanoTime)]
+           new-timer#    (add-child ~section-name)
+           t0#           (System/nanoTime)]
        (swap! *current-miniprofiler* assoc :current-timer new-timer#)
        (try
          (do ~@body)
          (finally
-           (let [t1# (System/nanoTime)
+           (let [t1#       (System/nanoTime)
                  duration# (distance-of-ns-time t0# t1#)]
              (swap! *current-miniprofiler*
                     (fn [current-miniprofiler#]
@@ -74,20 +88,25 @@
                                                  :duration-ms duration#))))))))))
      (do ~@body)))
 
+
 (defn html-pprint
   "pretty prints a string and returns it.
    Much faster than clojure.pprint, uses fipp"
   [x]
   (with-out-str (fipp.edn/pprint x)))
 
+
 (defn create-custom-timing [execute-type command-string stacktrace-info]
-  (->CustomTiming
-    (uuid)
-    execute-type
-    (if (string? command-string) command-string (html-pprint command-string))
-    stacktrace-info
-    (ms-since-start)
-    nil))
+  (types/map->CustomTiming
+    {:id                 (uuid)
+     :execute-type       execute-type
+     :command-string     (if (string? command-string)
+                           command-string
+                           (html-pprint command-string))
+     :stacktrace-snippet stacktrace-info
+     :start-ms           (ms-since-start)
+     :duration-ms        nil}))
+
 
 (defn get-stacktrace-info [duration]
   (if (< duration 5)
@@ -105,6 +124,7 @@
                (str (.getClassName e) "." (.getMethodName e) " " (.getFileName e) ":" (.getLineNumber e))))
         (string/join "\n")))))
 
+
 (defn add-custom-timing [current-miniprofiler call-type custom-timing duration stacktrace-info]
   (assoc current-miniprofiler
          :current-timer
@@ -116,6 +136,7 @@
                              (assoc custom-timing
                                     :duration-ms duration
                                     :stacktrace-snippet stacktrace-info))))))
+
 
 (defmacro custom-timing
   "wraps some of your code with a timing, so that it will show up
@@ -151,48 +172,49 @@
     (do ~@body)))
 
 (defn create-miniprofiler [req initial-opts]
-  (->Profiler
-    (->Timing
-      (uuid)
-      "ring handler"
-      0
-      nil
-      []
-      {})
-    (->Profile
-      (uuid)
-      (str (.toUpperCase (name (:request-method req))) " " (:uri req))
-      (current-ms)
-      0
-      (:hostname initial-opts )
-      nil
-      [])
-    (System/nanoTime)))
+  (let [profile-name (str (.toUpperCase (name (:request-method req))) " " (:uri req))]
+    (types/map->Profiler
+      {:current-timer (types/map->Timing
+                        {:id             (uuid)
+                         :timing-name    "ring handler"
+                         :start-ms       0
+                         :duration-ms    nil
+                         :children       []
+                         :custom-timings {}})
+       :root          (types/map->Profile
+                        {:id             (uuid)
+                         :profile-name   profile-name
+                         :started        (current-ms)
+                         :duration-ms    0
+                         :machine-name   (:hostname initial-opts)
+                         :root           nil
+                         :client-timings []})
+       :start-ns      (System/nanoTime)})))
+
 
 (defn reconstruct-profile [profiler duration]
   (assoc (:root profiler)
-         :root
-         (assoc
-           (:current-timer profiler)
-           :duration-ms
-           duration)
-         :duration-ms duration))
+    :root        (assoc (:current-timer profiler) :duration-ms duration)
+    :duration-ms duration))
+
 
 (defmacro with-recording [options req & body]
   `(let [miniprofiler# (create-miniprofiler ~req (or (:initial-opts ~options) (assert false)))]
      (binding [*current-miniprofiler* (atom miniprofiler#)]
-     (let [t0# (System/nanoTime)
-           result# (do ~@body)
-           t1# (System/nanoTime)
-           duration# (distance-of-ns-time t0# t1#)
-           reconstructed-profile# (reconstruct-profile @*current-miniprofiler* duration#)]
-       (save (:store ~options)
-             (to-miniprofiler-map reconstructed-profile#))
-       [(:id reconstructed-profile#) result#]))))
+       (let [t0#                    (System/nanoTime)
+             result#                (do ~@body)
+             t1#                    (System/nanoTime)
+             duration#              (distance-of-ns-time t0# t1#)
+             reconstructed-profile# (reconstruct-profile @*current-miniprofiler* duration#)]
+         (store/save (:store ~options)
+           (types/to-miniprofiler-map reconstructed-profile#))
+         [(:id reconstructed-profile#) result#]))))
+
 
 (defn parse-json [value]
   (json/parse-string
     (if (string? value) value (slurp value))))
+
 
 (defn build-miniprofiler-response-json
   "inserts the miniprofiler details into a json
@@ -201,41 +223,44 @@
   (if (or (get-in response [:headers "Content-Length"])
           (string? (:body response)))
     (let [body (-> (:body response)
-                 (parse-json)
-                 (assoc :miniprofiler
-                   {:id profiler-id
-                    :link (str (:base-path options) "/results?id=" profiler-id)
-                    :durationMilliseconds duration-ms})
-                 (json/generate-string))
+                   (parse-json)
+                   (assoc :miniprofiler
+                     {:id profiler-id
+                      :link (str (:base-path options) "/results?id=" profiler-id)
+                      :durationMilliseconds duration-ms})
+                   (json/generate-string))
           body*  (.getBytes body "UTF-8")
           length (count body*)]
       (-> response
-        (assoc :body (io/input-stream body*))
-        (assoc-in [:headers "Content-Length"] (str length))
-        (assoc-in [:headers "X-MiniProfiler-Ids"]
-          (json/generate-string [profiler-id]))))
+          (assoc :body (io/input-stream body*))
+          (update :headers assoc
+            "Content-Length"     (str length)
+            "X-MiniProfiler-Ids" (json/generate-string [profiler-id]))))
     response))
+
 
 (def miniprofiler-script-tag
   (slurp (:body (response/resource-response "include.partial.html"))))
+
 
 (defn build-miniprofiler-script-tag [duration-ms profiler-id options]
   (reduce
     (fn [result [k v]]
       (string/replace result (str "{" k "}") (string/re-quote-replacement (str v))))
     miniprofiler-script-tag
-    {"path" (str (:base-path options) "/")
-     "version" "0.0.1"
-     "currentId" profiler-id
-     "ids" profiler-id
-     "showControls" (str (:show-controls options true))
-     "authorized" "true"
-     "startHidden" "false"
-     "position" (str (:position options "right"))
-     "showTrivial" (str (:show-trivial options false))
-     "showChildren" (str (:show-children options true))
-     "maxTracesToShow" (str (:max-traces options 100))
+    {"path"                (str (:base-path options) "/")
+     "version"             "0.0.1"
+     "currentId"           profiler-id
+     "ids"                 profiler-id
+     "showControls"        (str (:show-controls options true))
+     "authorized"          "true"
+     "startHidden"         "false"
+     "position"            (str (:position options "right"))
+     "showTrivial"         (str (:show-trivial options false))
+     "showChildren"        (str (:show-children options true))
+     "maxTracesToShow"     (str (:max-traces options 100))
      "trivialMilliseconds" (:trivial-ms options 2)}))
+
 
 (defn build-miniprofiler-response-html
   "inserts the miniprofiler javascript tag into
@@ -248,19 +273,19 @@
                     (.substring body insert-at))]
     (assoc response :body new-body)))
 
+
 (defn miniprofiler-resource-path [req options]
   (let [^String uri (:uri req)]
-    (if (.contains uri (:base-path options))
-      (do
-        (if (.endsWith uri (str (:base-path options) "/includes.js"))
-          "includes.js"
-          (if (.endsWith uri (str (:base-path options) "/includes.tmpl"))
-            "includes.tmpl"
-            (if (.endsWith uri (str (:base-path options) "/includes.css"))
-              "includes.css")))))))
+    (when (.contains uri (:base-path options))
+      (cond
+        (.endsWith uri (str (:base-path options) "/includes.js"))   "includes.js"
+        (.endsWith uri (str (:base-path options) "/includes.tmpl")) "includes.tmpl"
+        (.endsWith uri (str (:base-path options) "/includes.css"))  "includes.css"))))
+
 
 (defn miniprofiler-results-request? [req options]
   (= (str (:base-path options) "/results") (:uri req)))
+
 
 (defn get-id-from-req [req]
   (if (= (:request-method req) :post)
@@ -270,19 +295,20 @@
         (get-in req [:params :id])))
     (string/replace (:query-string req) "id=" "")))
 
+
 (defn render-share
   "returns a ring response for sharing the miniprofiler result"
   [id options]
   (let [resource (response/resource-response "share.html")
-        result (fetch (:store options) id)]
+        result   (store/fetch (:store options) id)]
     {:body
      (reduce
        (fn [result [k v]]
          (string/replace result (re-pattern (str "\\{" k "\\}")) (string/re-quote-replacement (str v))))
        (slurp (:body resource))
-       {"name" (get result "Name")
+       {"name"     (get result "Name")
         "duration" (get result "DurationMilliseconds")
-        "json" (json/generate-string result)
+        "json"     (json/generate-string result)
         "includes" (build-miniprofiler-script-tag (get result "DurationMilliseconds") (get result "Id") options)})}))
 
 (defn add-client-results
@@ -328,7 +354,7 @@
                   "Start" (get timingsDiffSinceStart :fetchStart)
                   "Duration" 0}
 
-                 (if (not (= 0 (get timings :secureConnectionStart)))
+                 (when (not (= 0 (get timings :secureConnectionStart)))
                    {"Name" "secureConnectionStart"
                     "Start" (get timingsDiffSinceStart :secureConnectionStart)
                     "Duration" 0})
@@ -349,16 +375,21 @@
                   "Start" (get timingsDiffSinceStart "First Paint After Load Time")
                   "Duration" 0}]))})))
 
+
 (defn miniprofiler-results-response
   "builds a ring response that returns miniprofiler results
-   as json in the :body."
+  as json in the :body."
   [req options]
-  (let [with-params (params/params-request req)]
-    (let [id (get-id-from-req with-params)]
-      (if (= (:request-method with-params) :post)
-        (let [nested (keyword-params/keyword-params-request (nested-params/nested-params-request with-params))]
-          {:body (json/generate-string (add-client-results nested (fetch (:store options) id)))})
-        (render-share id options)))))
+  (let [with-params (params/params-request req)
+        id          (get-id-from-req with-params)]
+    (if (= (:request-method with-params) :post)
+      (let [nested (-> with-params
+                       nested-params/nested-params-request
+                       keyword-params/keyword-params-request)
+            result (add-client-results nested (store/fetch (:store options) id))]
+        {:body (json/generate-string result)})
+      (render-share id options))))
+
 
 (defn default-options [opts]
   (merge
@@ -444,7 +475,7 @@
     a function that dictates whether we should profile the current request.
     By default asset requests aren't profiled, just html/json ones."
   [handler opts]
-  (let [options (map->Options (default-options opts))
+  (let [options     (types/map->Options (default-options opts))
         authorized? (:authorized? options)]
     (fn [req]
       (if (authorized? req)
